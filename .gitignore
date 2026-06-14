@@ -22,3 +22,13 @@ yarn-error.log*
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# TypeScript incremental build cache
+tsconfig.tsbuildinfo
+
+# Legacy files (superseded by /app/api/tasks)
+lib/data.ts
