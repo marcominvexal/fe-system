@@ -1,0 +1,34 @@
+# dependencies
+node_modules/
+
+# Next.js build
+.next/
+out/
+
+# environment variables
+.env.local
+.env*.local
+
+# database (local dev only — don't commit data)
+data/db.json
+
+# misc
+.DS_Store
+*.pem
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# TypeScript incremental build cache
+tsconfig.tsbuildinfo
+
+# Legacy files (superseded by /app/api/tasks)
+lib/data.ts
