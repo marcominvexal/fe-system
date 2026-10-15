@@ -10,6 +10,7 @@ export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Bool
 // Few hues: neutral for queued, blue for acknowledged, orange for live work,
 // amber for "needs you", green for done, red for failure.
 export const STATUS_LABEL: Record<TaskStatus, string> = {
+  pending:     "Needs Assignment",
   assigned:    "Assigned",
   accepted:    "Accepted",
   rejected:    "Rejected",
@@ -19,7 +20,7 @@ export const STATUS_LABEL: Record<TaskStatus, string> = {
   cancelled:   "Cancelled",
 };
 const STATUS_TONE: Record<TaskStatus, Tone> = {
-  assigned: "neutral", accepted: "info", in_progress: "brand",
+  pending: "warn", assigned: "neutral", accepted: "info", in_progress: "brand",
   completed: "warn", approved: "ok", rejected: "crit", cancelled: "muted",
 };
 

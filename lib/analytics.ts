@@ -29,33 +29,50 @@ const H   = 3_600_000;
 const DAY = 24 * H;
 const ts  = (iso?: string) => (iso ? new Date(iso).getTime() : NaN);
 
-export const OPEN_STATUSES: TaskStatus[] = ["assigned", "accepted", "in_progress", "completed"];
+export const OPEN_STATUSES: TaskStatus[] = ["pending", "assigned", "accepted", "in_progress", "completed"];
+const AWAITING_ARRIVAL: TaskStatus[] = ["pending", "assigned", "accepted"];
 
 // ── SLA ──────────────────────────────────────────────────────────────────────
 export type SlaState = "met" | "breached" | "at_risk" | "on_track" | "n/a";
 
+/** Grace after a booked arrival time (Orange gives a 30-minute ETA window). */
+const SCHEDULE_GRACE_H = 0.5;
+
+/** When the clock starts: the booked arrival for scheduled visits, else task creation. */
+const clockStart = (t: Task) => ts(t.scheduledAt ?? t.createdAt);
+
+/** Latest on-time arrival. */
+function deadline(t: Task): number {
+  if (t.scheduledAt) return ts(t.scheduledAt) + SCHEDULE_GRACE_H * H;
+  return ts(t.createdAt) + (SLA_TARGET_HOURS[t.serviceLevel] ?? 24) * H;
+}
+
+/** Hours from clock start to check-in (never negative for early arrivals). */
 export function responseHours(t: Task): number | undefined {
   if (!t.checkInTime) return undefined;
-  return (ts(t.checkInTime) - ts(t.createdAt)) / H;
+  return Math.max(0, (ts(t.checkInTime) - clockStart(t)) / H);
 }
 
 export function slaState(t: Task, now = Date.now()): SlaState {
-  const target = SLA_TARGET_HOURS[t.serviceLevel] ?? 24;
-  const resp = responseHours(t);
-  if (resp !== undefined) return resp <= target ? "met" : "breached";
-  if (t.status === "assigned" || t.status === "accepted") {
-    const elapsed = (now - ts(t.createdAt)) / H;
-    if (elapsed > target) return "breached";
-    if (elapsed > target * 0.75) return "at_risk";
+  if (t.checkInTime) return ts(t.checkInTime) <= deadline(t) ? "met" : "breached";
+  if (AWAITING_ARRIVAL.includes(t.status)) {
+    const window = (deadline(t) - clockStart(t)) / H;
+    const left = (deadline(t) - now) / H;
+    if (left < 0) return "breached";
+    if (left < window * 0.25 || (t.scheduledAt && left < 1)) return "at_risk";
     return "on_track";
   }
   return "n/a";
 }
 
-/** Hours left before the response SLA lapses (negative = overdue). */
+/** Hours left before the arrival deadline (negative = overdue). */
 export function slaHoursLeft(t: Task, now = Date.now()): number {
-  const target = SLA_TARGET_HOURS[t.serviceLevel] ?? 24;
-  return target - (now - ts(t.createdAt)) / H;
+  return (deadline(t) - now) / H;
+}
+
+/** How late the engineer arrived (or is, if not yet on site), in hours. */
+export function lateByHours(t: Task, now = Date.now()): number {
+  return ((t.checkInTime ? ts(t.checkInTime) : now) - deadline(t)) / H;
 }
 
 /** Value a task will bill once approved (actual if approved, engine estimate otherwise). */
@@ -155,6 +172,7 @@ export function pctChange(cur: number | null, prev: number | null): number | nul
 
 // ── Pipeline / work-in-progress ──────────────────────────────────────────────
 export const PIPELINE: { status: TaskStatus; label: string }[] = [
+  { status: "pending",     label: "Needs assignment" },
   { status: "assigned",    label: "Assigned" },
   { status: "accepted",    label: "Accepted" },
   { status: "in_progress", label: "On site" },
@@ -170,14 +188,15 @@ export function pipeline(tasks: Task[]) {
 
 // ── Attention items ──────────────────────────────────────────────────────────
 export function attention(tasks: Task[], now = Date.now()) {
-  const awaiting = tasks.filter((t) => t.status === "completed");
-  const open     = tasks.filter((t) => t.status === "assigned" || t.status === "accepted");
-  const breached = open.filter((t) => slaState(t, now) === "breached");
-  const atRisk   = open.filter((t) => slaState(t, now) === "at_risk");
-  const rejected = tasks.filter((t) => t.status === "rejected");
+  const awaiting   = tasks.filter((t) => t.status === "completed");
+  const open       = tasks.filter((t) => AWAITING_ARRIVAL.includes(t.status) && !t.checkInTime);
+  const breached   = open.filter((t) => slaState(t, now) === "breached");
+  const atRisk     = open.filter((t) => slaState(t, now) === "at_risk");
+  const rejected   = tasks.filter((t) => t.status === "rejected");
+  const unassigned = tasks.filter((t) => t.status === "pending");
   return {
     awaiting, awaitingValue: awaiting.reduce((s, t) => s + taskValue(t), 0),
-    breached, atRisk, rejected,
+    breached, atRisk, rejected, unassigned,
   };
 }
 

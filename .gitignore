@@ -34,3 +34,7 @@ tsconfig.tsbuildinfo
 lib/data.ts
 .vercel
 .env*
+
+# Email automation runtime state
+data/mail-log.json
+data/mail-state.json

@@ -11,6 +11,7 @@ import { attention } from "@/lib/analytics";
 
 const NAV = [
   { label: "Overview",    href: "/admin",             icon: Icons.Grid },
+  { label: "Inbox",       href: "/admin/inbox",       icon: Icons.Inbox },
   { label: "Invoices",    href: "/admin/invoices",    icon: Icons.Invoice },
   { label: "Customers",   href: "/admin/customers",   icon: Icons.Building },
   { label: "Engineers",   href: "/admin/engineers",   icon: Icons.Users },

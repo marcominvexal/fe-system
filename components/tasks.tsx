@@ -9,7 +9,7 @@ import {
   calcDuration, fmtDate,
 } from "@/lib/store";
 import { calculateCommercial } from "@/lib/commercialEngine";
-import { slaState, slaHoursLeft, SLA_TARGET_HOURS, fmtHrs, responseHours } from "@/lib/analytics";
+import { slaState, slaHoursLeft, lateByHours, SLA_TARGET_HOURS, fmtHrs, responseHours } from "@/lib/analytics";
 import { Icons } from "./icons";
 import {
   Avatar, Badge, Button, Drawer, Modal, Select, StatusBadge, cx,
@@ -44,7 +44,7 @@ export function SlaTag({ task }: { task: Task }) {
   if (s === "n/a") return <span className="text-fg-faint">—</span>;
   if (s === "met") return <Badge tone="ok" dot={false}>Met · {fmtHrs(responseHours(task) ?? null)}</Badge>;
   if (s === "breached") {
-    const over = task.checkInTime ? (responseHours(task) ?? 0) - SLA_TARGET_HOURS[task.serviceLevel] : -slaHoursLeft(task);
+    const over = lateByHours(task);
     return <Badge tone="crit" dot={false}>Breached +{fmtHrs(over)}</Badge>;
   }
   if (s === "at_risk") return <Badge tone="warn" dot={false}>{fmtHrs(slaHoursLeft(task))} left</Badge>;
@@ -181,10 +181,11 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   return <p className="mb-2.5 text-2xs font-medium uppercase tracking-[0.08em] text-fg-subtle">{children}</p>;
 }
 
-export function DetailPanel({ task, onClose, onApprove, onCancelClick, onEditClick, onReassignClick }: {
+export function DetailPanel({ task, onClose, onApprove, onAssign, onCancelClick, onEditClick, onReassignClick }: {
   task: Task;
   onClose: () => void;
   onApprove: (id: string) => Promise<void>;
+  onAssign: (id: string, payload: AssignPayload) => Promise<void>;
   onCancelClick: () => void;
   onEditClick: () => void;
   onReassignClick: () => void;
@@ -236,6 +237,8 @@ export function DetailPanel({ task, onClose, onApprove, onCancelClick, onEditCli
 
       {/* Body */}
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto px-5 py-5">
+        {task.status === "pending" && <AssignPanel task={task} onAssign={onAssign} />}
+        {task.source === "email" && <OrangeDetails task={task} />}
         <div className="grid grid-cols-2 gap-x-6 gap-y-4">
           <Field label="Customer">{task.customer}</Field>
           <Field label="Engineer">
@@ -244,7 +247,7 @@ export function DetailPanel({ task, onClose, onApprove, onCancelClick, onEditCli
           <Field label="Location" span><span className="flex items-center gap-1.5 text-fg-muted"><Icons.MapPin size={13} className="text-fg-faint" />{task.location}</span></Field>
           <Field label="Work type">{task.maintenanceType}</Field>
           <Field label="Visit duration">{task.visitDuration}</Field>
-          {task.description && <Field label="Description" span><p className="leading-relaxed text-fg-muted">{task.description}</p></Field>}
+          {task.description && <Field label="Description" span><Expandable text={task.description} /></Field>}
         </div>
 
         <div>
@@ -263,7 +266,7 @@ export function DetailPanel({ task, onClose, onApprove, onCancelClick, onEditCli
             ))}
           </div>
           <div className="mt-2 flex items-center justify-between text-xs text-fg-subtle">
-            <span>Response target {SLA_TARGET_HOURS[task.serviceLevel]}h</span>
+            <span>{task.scheduledAt ? <>Booked arrival {fmtDate(task.scheduledAt)}</> : <>Response target {SLA_TARGET_HOURS[task.serviceLevel]}h</>}</span>
             <SlaTag task={task} />
           </div>
         </div>
@@ -299,10 +302,12 @@ export function DetailPanel({ task, onClose, onApprove, onCancelClick, onEditCli
           )}
         </div>
 
+        {task.emailLog && task.emailLog.length > 0 && <EmailTrail task={task} />}
+
         <div>
           <SectionLabel>Engineer comments</SectionLabel>
           {task.comments ? (
-            <p className="rounded-lg border border-line bg-canvas/50 px-3.5 py-3 text-[13px] leading-relaxed text-fg-muted">{task.comments}</p>
+            <p className="whitespace-pre-wrap rounded-lg border border-line bg-canvas/50 px-3.5 py-3 text-[13px] leading-relaxed text-fg-muted">{task.comments}</p>
           ) : (
             <p className="text-xs text-fg-faint">No comments recorded.</p>
           )}
@@ -357,6 +362,144 @@ export function DetailPanel({ task, onClose, onApprove, onCancelClick, onEditCli
         )}
       </div>
     </Drawer>
+  );
+}
+
+// ── Email-automation pieces ───────────────────────────────────────────────────
+export interface AssignPayload {
+  engineerId: string; engineerName: string;
+  maintenanceLevel: MaintenanceLevel; serviceLevel: ServiceLevel;
+  distanceBand: DistanceBand; visitDuration: VisitDuration;
+}
+
+function Expandable({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const long = text.split("\n").length > 6 || text.length > 420;
+  return (
+    <div>
+      <p className={cx("whitespace-pre-wrap leading-relaxed text-fg-muted", !open && long && "line-clamp-6")}>{text}</p>
+      {long && (
+        <button onClick={() => setOpen(!open)} className="mt-1 text-xs font-medium text-brand-soft hover:text-brand">
+          {open ? "Show less" : "Show full dispatch notes"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function OrangeDetails({ task }: { task: Task }) {
+  const rows = [
+    { l: "Work order", v: task.workOrder && <span className="font-mono">{task.workOrder}</span> },
+    { l: "End customer", v: task.endCustomer },
+    { l: "Site", v: task.siteId },
+    { l: "Product", v: task.product },
+    { l: "Booked arrival", v: task.scheduledAt && fmtDate(task.scheduledAt) },
+    { l: "Dispatched by", v: task.assignedBy },
+    { l: "Site contact", v: task.siteContact },
+  ].filter((r) => r.v);
+  return (
+    <div className="overflow-hidden rounded-lg border border-line">
+      <p className="flex items-center gap-2 border-b border-line bg-white/[0.02] px-3.5 py-2 text-2xs font-medium uppercase tracking-[0.06em] text-fg-subtle">
+        <Icons.Mail size={12} className="text-brand" />Orange Business work order
+      </p>
+      <dl className="grid grid-cols-[120px_minmax(0,1fr)] gap-x-3 gap-y-2 px-3.5 py-3 text-[13px]">
+        {rows.map((r) => (
+          <div key={r.l} className="contents">
+            <dt className="text-fg-subtle">{r.l}</dt>
+            <dd className="min-w-0 break-words text-fg">{r.v}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+const EMAIL_DOT: Record<string, string> = { dispatch: "bg-info", photo: "bg-fg-subtle", cleared: "bg-ok" };
+
+function EmailTrail({ task }: { task: Task }) {
+  const t = task.onSiteTimes;
+  const log = task.emailLog ?? [];
+  const stamps = (t ? [
+    ["Travel start", t.travelStart], ["Arrived on site", t.arriveOnSite], ["Work start", t.workStart],
+    ["Work stop", t.workStop], ["Left site", t.leaveSite], ["Travel stop", t.travelStop],
+  ] : []).filter(([, v]) => v) as [string, string][];
+  return (
+    <div>
+      <SectionLabel>Email trail · {log.length} notification{log.length === 1 ? "" : "s"}</SectionLabel>
+      <ol className="space-y-2.5">
+        {log.map((e) => (
+          <li key={e.messageId} className="flex items-start gap-3">
+            <span className={cx("mt-1.5 h-[7px] w-[7px] shrink-0 rounded-full", EMAIL_DOT[e.kind] ?? "bg-fg-subtle")} />
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] text-fg">{e.note}</p>
+              <p className="truncate text-2xs text-fg-subtle" title={e.subject}>{e.subject}</p>
+            </div>
+            <span className="num shrink-0 text-2xs text-fg-faint">{fmtDate(e.at)}</span>
+          </li>
+        ))}
+      </ol>
+      {stamps.length > 0 && (
+        <div className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-3">
+          {stamps.map(([l, v]) => (
+            <div key={l} className="bg-panel px-3 py-2">
+              <p className="text-2xs text-fg-subtle">{l}</p>
+              <p className="num mt-0.5 text-xs text-fg">{new Date(v).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AssignPanel({ task, onAssign }: { task: Task; onAssign: (id: string, p: AssignPayload) => Promise<void> }) {
+  const [engId, setEngId] = useState(engineers[0].id);
+  const [ml, setMl] = useState<MaintenanceLevel>(task.maintenanceLevel);
+  const [sl, setSl] = useState<ServiceLevel>(task.serviceLevel);
+  const [db, setDb] = useState<DistanceBand>(task.distanceBand);
+  const [vd, setVd] = useState<VisitDuration>(task.visitDuration);
+  const [busy, setBusy] = useState(false);
+  const price = calculateCommercial(ml, sl, db, vd);
+  const submit = async () => {
+    setBusy(true);
+    const eng = engineers.find((e) => e.id === engId)!;
+    await onAssign(task.id, { engineerId: eng.id, engineerName: eng.name, maintenanceLevel: ml, serviceLevel: sl, distanceBand: db, visitDuration: vd });
+    setBusy(false);
+  };
+  return (
+    <div className="rounded-lg border border-warn/30 bg-warn/[0.05] p-4">
+      <p className="text-[13px] font-semibold text-fg">Assign this work order</p>
+      <p className="mt-0.5 text-xs text-fg-subtle">
+        Created from an Orange email. Pick the engineer and confirm the pricing inputs, which Orange does not send.
+        {task.checkOutTime && " Orange already reported this visit as cleared, so it will go straight to approval."}
+      </p>
+      <div className="mt-3 grid grid-cols-2 gap-3">
+        <div className="col-span-2"><label className={labelCls} htmlFor="a-eng">Engineer</label>
+          <Select id="a-eng" value={engId} onChange={(e) => setEngId(e.target.value)}>
+            {engineers.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+          </Select></div>
+        <div><label className={labelCls} htmlFor="a-ml">Maintenance</label>
+          <Select id="a-ml" value={ml} onChange={(e) => setMl(e.target.value as MaintenanceLevel)}>
+            {MAINTENANCE_LEVELS.map((m) => <option key={m}>{m}</option>)}
+          </Select></div>
+        <div><label className={labelCls} htmlFor="a-sl">SLA</label>
+          <Select id="a-sl" value={sl} onChange={(e) => setSl(e.target.value as ServiceLevel)}>
+            {SERVICE_LEVELS.map((m) => <option key={m}>{m}</option>)}
+          </Select></div>
+        <div><label className={labelCls} htmlFor="a-db">Distance</label>
+          <Select id="a-db" value={db} onChange={(e) => setDb(e.target.value as DistanceBand)}>
+            {DISTANCE_BANDS.map((m) => <option key={m}>{m}</option>)}
+          </Select></div>
+        <div><label className={labelCls} htmlFor="a-vd">Visit length{task.onSiteTimes ? " (from Orange)" : ""}</label>
+          <Select id="a-vd" value={vd} onChange={(e) => setVd(e.target.value as VisitDuration)}>
+            {VISIT_DURATIONS.map((m) => <option key={m}>{m}</option>)}
+          </Select></div>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-fg-subtle">Customer charge <span className="num font-semibold text-fg">${price.customerChargeUSD}</span> · FE pay <span className="num text-fg-muted">${price.engineerPaymentUSD}</span></p>
+        <Button variant="primary" onClick={submit} disabled={busy}>{busy ? "Assigning…" : "Assign engineer"}</Button>
+      </div>
+    </div>
   );
 }
 

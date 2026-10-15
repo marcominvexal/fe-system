@@ -19,6 +19,7 @@ export {
 
 // ─── Task status lifecycle ────────────────────────────────────────────────────
 export type TaskStatus =
+  | "pending"     // created from an Orange email, waiting for admin to assign an FE
   | "assigned"    // created by admin, waiting for FE to accept
   | "accepted"    // FE accepted, not yet on site
   | "rejected"    // FE rejected with reason
@@ -59,6 +60,37 @@ export interface Task {
   invoiceNumber?:      string;
   cancelledAt?:        string;
   cancelReason?:       string;
+
+  // ── Email automation (Orange Business OBSLink notifications) ──
+  source?:             "manual" | "email";
+  workOrder?:          string;          // e.g. "18531881-1"
+  endCustomer?:        string;          // e.g. "GLAXOSMITHKLINE SERVICES UNLIMITED"
+  siteId?:             string;
+  product?:            string;          // product / serial from the dispatch
+  scheduledAt?:        string;          // requested arrival (ETA early start), ISO
+  assignedBy?:         string;          // Orange dispatcher name
+  siteContact?:        string;          // on-site contact as written in the dispatch
+  onSiteTimes?:        OnSiteTimes;     // from the "Cleared" notification
+  emailLog?:           EmailEvent[];
+}
+
+export interface OnSiteTimes {
+  travelStart?: string;
+  arriveOnSite?: string;
+  workStart?: string;
+  workStop?: string;
+  leaveSite?: string;
+  travelStop?: string;
+}
+
+export type EmailKind = "dispatch" | "photo" | "cleared";
+
+export interface EmailEvent {
+  kind:      EmailKind;
+  at:        string;   // email date, ISO
+  subject:   string;
+  messageId: string;
+  note?:     string;
 }
 
 // ─── Reference data (client-safe) ─────────────────────────────────────────────

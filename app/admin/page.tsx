@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Task, TaskStatus, engineers, fmtDate, calcDuration, shortLabel } from "@/lib/store";
 import { useStore } from "@/lib/storeContext";
 import { useShell } from "@/components/shell";
+import { MailBanner, MailButtons, useMailActions } from "@/components/mail";
 import { Icons } from "@/components/icons";
 import {
   Avatar, Badge, Button, Delta, Panel, Segmented, Select, StatusBadge, cx, statusTone, toneDot,
@@ -13,6 +14,7 @@ import { Bullet, CumulativeChart, DailyBars, Sparkline } from "@/components/char
 import { DataTable, type Column } from "@/components/DataTable";
 import {
   CancelModal, CreateTaskDrawer, DetailPanel, EditModal, PriorityTag, ReassignModal, SlaTag,
+  type AssignPayload,
 } from "@/components/tasks";
 import {
   TARGETS, RANGE_DAYS, type RangeKey, summarize, pctChange, pipeline, attention,
@@ -21,10 +23,11 @@ import {
 } from "@/lib/analytics";
 
 // Board views — quick drill-down presets layered on top of the status filter
-type View = "all" | "open" | "awaiting" | "breached" | "at_risk" | "rejected" | "closed";
+type View = "all" | "open" | "unassigned" | "awaiting" | "breached" | "at_risk" | "rejected" | "closed";
 const VIEWS: { value: View; label: string }[] = [
   { value: "all", label: "All" },
   { value: "open", label: "Open" },
+  { value: "unassigned", label: "Needs assignment" },
   { value: "awaiting", label: "Awaiting approval" },
   { value: "breached", label: "SLA breached" },
   { value: "closed", label: "Closed" },
@@ -32,8 +35,9 @@ const VIEWS: { value: View; label: string }[] = [
 const matchView = (t: Task, v: View) => {
   switch (v) {
     case "open":     return OPEN_STATUSES.includes(t.status);
+    case "unassigned": return t.status === "pending";
     case "awaiting": return t.status === "completed";
-    case "breached": return (t.status === "assigned" || t.status === "accepted") && slaState(t) === "breached";
+    case "breached": return ["pending", "assigned", "accepted"].includes(t.status) && !t.checkInTime && slaState(t) === "breached";
     case "at_risk":  return slaState(t) === "at_risk";
     case "rejected": return t.status === "rejected";
     case "closed":   return ["approved", "cancelled", "rejected"].includes(t.status);
@@ -103,7 +107,7 @@ function AttentionItem({ tone, count, title, detail, action, onClick }: {
         <span className="block truncate text-2xs text-fg-subtle">{detail}</span>
       </span>
       {live && (
-        <span className="hidden items-center gap-0.5 text-2xs font-medium text-fg-subtle transition-colors group-hover:text-brand-soft sm:flex">
+        <span className="hidden items-center gap-0.5 text-2xs font-medium text-fg-subtle transition-colors group-hover:text-brand-soft sm:flex xl:hidden 2xl:flex">
           {action}<Icons.ChevronR size={12} />
         </span>
       )}
@@ -132,6 +136,7 @@ export default function AdminPage() {
   const [editTarget, setEditTarget]         = useState<Task | null>(null);
   const [reassignTarget, setReassignTarget] = useState<Task | null>(null);
   const [trendMetric, setTrendMetric]       = useState<"revenue" | "visits">("revenue");
+  const mail                                = useMailActions(refresh);
 
   // Filters
   const [view, setView]                     = useState<View>("all");
@@ -165,7 +170,9 @@ export default function AdminPage() {
         t.customer.toLowerCase().includes(q) ||
         t.engineerName.toLowerCase().includes(q) ||
         t.location.toLowerCase().includes(q) ||
-        t.id.toLowerCase().includes(q)
+        t.id.toLowerCase().includes(q) ||
+        (t.workOrder ?? "").toLowerCase().includes(q) ||
+        (t.endCustomer ?? "").toLowerCase().includes(q)
       );
       const matchStatus   = !statusFilter  || t.status === statusFilter;
       const matchEngineer = !engineerFilter || t.engineerId === engineerFilter;
@@ -224,6 +231,17 @@ export default function AdminPage() {
     setSelectedTask(updated);
   };
 
+  const handleAssign = async (id: string, payload: AssignPayload) => {
+    const res = await fetch("/api/tasks", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, action: "assign", ...payload }),
+    });
+    const updated = await res.json() as Task;
+    refresh();
+    setSelectedTask(updated);
+  };
+
   const filtersActive = query || statusFilter || engineerFilter || view !== "all";
   const clearFilters = () => { setQuery(""); setStatusFilter(""); setEngineerFilter(""); setView("all"); };
 
@@ -235,7 +253,9 @@ export default function AdminPage() {
         <div className="min-w-[170px] max-w-[230px] 2xl:max-w-[340px]">
           <p className="truncate font-medium text-fg">{t.title}</p>
           <p className="mt-0.5 flex items-center gap-1.5 truncate text-2xs text-fg-subtle">
-            <span className="font-mono text-fg-faint">{t.id}</span><span className="text-fg-faint">·</span>{t.location}
+            <span className="font-mono text-fg-faint">{t.id}</span>
+            {t.workOrder && <span className="inline-flex items-center gap-1 font-mono text-brand-soft/80" title="Orange Business work order"><Icons.Mail size={10} />{t.workOrder}</span>}
+            <span className="text-fg-faint">·</span>{t.location}
           </p>
         </div>
       ),
@@ -272,6 +292,8 @@ export default function AdminPage() {
         <span onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
           {t.status === "completed" ? (
             <Button size="sm" variant="success" onClick={() => handleApprove(t.id)}>Approve</Button>
+          ) : t.status === "pending" ? (
+            <Button size="sm" variant="primary" onClick={() => setSelectedTask(t)}>Assign</Button>
           ) : (
             <Button size="sm" variant="ghost" onClick={() => setSelectedTask(t)} aria-label={`View ${t.id}`}>
               View
@@ -299,9 +321,12 @@ export default function AdminPage() {
         <div className="flex items-center gap-2">
           <Segmented<RangeKey> label="Reporting period" value={range} onChange={setRange}
             options={[{ value: "7d", label: "7D" }, { value: "30d", label: "30D" }, { value: "90d", label: "90D" }]} />
+          <MailButtons actions={mail} />
           <Button variant="primary" onClick={() => setShowForm(true)}><Icons.Plus size={15} />Create task</Button>
         </div>
       </div>
+
+      <MailBanner actions={mail} />
 
       {/* ── Needs attention ── */}
       <section id="attention" aria-label="Needs attention" className="mb-4 scroll-mt-20 overflow-hidden rounded-xl border border-line">
@@ -311,7 +336,10 @@ export default function AdminPage() {
           </p>
           <p className="num text-2xs text-fg-faint">{fmtUSD(att.awaitingValue)} unbilled pending approval</p>
         </div>
-        <div className="grid gap-px bg-line sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-px bg-line sm:grid-cols-2 xl:grid-cols-5 [&>*:first-child]:sm:col-span-2 [&>*:first-child]:xl:col-span-1">
+          <AttentionItem tone="brand" count={att.unassigned.length} title="New from Orange"
+            detail={att.unassigned.length ? "Work orders to assign" : "No work orders waiting"}
+            action="Assign" onClick={() => drill("unassigned")} />
           <AttentionItem tone="warn" count={att.awaiting.length} title="Awaiting approval"
             detail={att.awaiting.length ? `${fmtUSD(att.awaitingValue)} ready to invoice` : "Nothing to approve"}
             action="Review" onClick={() => drill("awaiting")} />
@@ -582,6 +610,7 @@ export default function AdminPage() {
           task={selectedTask}
           onClose={() => setSelectedTask(null)}
           onApprove={handleApprove}
+          onAssign={handleAssign}
           onCancelClick={() => setCancelTarget(selectedTask)}
           onEditClick={() => setEditTarget(selectedTask)}
           onReassignClick={() => setReassignTarget(selectedTask)}

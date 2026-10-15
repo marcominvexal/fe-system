@@ -53,6 +53,7 @@ export async function POST(req: NextRequest) {
 //   { action: "approve" }
 //   { action: "cancel", cancelReason?: string }
 //   { action: "reassign", engineerId: string, engineerName: string }
+//   { action: "assign", engineerId, engineerName, maintenanceLevel?, serviceLevel?, distanceBand?, visitDuration? }
 //   (any other partial Task fields = generic edit)
 
 export async function PATCH(req: NextRequest) {
@@ -163,6 +164,32 @@ export async function PATCH(req: NextRequest) {
         status:      "cancelled",
         cancelledAt: new Date().toISOString(),
         cancelReason: rest.cancelReason || "Cancelled by admin",
+      };
+      break;
+    }
+
+    case "assign": {
+      // Email-created task: admin picks the engineer and confirms pricing inputs
+      if (t.status !== "pending") {
+        return NextResponse.json({ error: "Only tasks awaiting assignment can be assigned" }, { status: 400 });
+      }
+      if (!rest.engineerId || !rest.engineerName) {
+        return NextResponse.json({ error: "engineerId and engineerName are required" }, { status: 400 });
+      }
+      const maintenanceLevel = rest.maintenanceLevel ?? t.maintenanceLevel;
+      const serviceLevel     = rest.serviceLevel     ?? t.serviceLevel;
+      const distanceBand     = rest.distanceBand     ?? t.distanceBand;
+      const visitDuration    = rest.visitDuration    ?? t.visitDuration;
+      // If Orange already reported the visit as done, go straight to approval
+      const status: TaskStatus = t.checkOutTime ? "completed" : t.checkInTime ? "in_progress" : "assigned";
+      tasks[idx] = {
+        ...t,
+        status,
+        engineerId:   rest.engineerId,
+        engineerName: rest.engineerName,
+        maintenanceLevel, serviceLevel, distanceBand, visitDuration,
+        ruleKey: buildRuleKey(maintenanceLevel, serviceLevel, distanceBand, visitDuration),
+        acceptedAt: status !== "assigned" ? (t.acceptedAt ?? t.checkInTime) : t.acceptedAt,
       };
       break;
     }
