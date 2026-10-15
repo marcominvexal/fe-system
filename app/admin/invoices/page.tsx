@@ -1,10 +1,16 @@
 "use client";
 
 import { useStore } from "@/lib/storeContext";
-import { calcDuration, fmtDate } from "@/lib/store";
+import { Task, calcDuration, fmtDate } from "@/lib/store";
+import { useShell } from "@/components/shell";
+import { Avatar, Badge, PageHeader, Stat, StatStrip } from "@/components/ui";
+import { DataTable, type Column } from "@/components/DataTable";
+import { Icons } from "@/components/icons";
+import { fmtUSD, taskValue } from "@/lib/analytics";
 
 export default function InvoicesPage() {
   const { tasks } = useStore();
+  const { query, setQuery } = useShell();
 
   const approved  = tasks.filter((t) => t.status === "approved");
   const completed = tasks.filter((t) => t.status === "completed");
@@ -14,169 +20,95 @@ export default function InvoicesPage() {
   const totalCost   = approved.reduce((s, t) => s + (t.engineerPaymentUSD ?? 0), 0);
   const totalProfit = approved.reduce((s, t) => s + (t.profit ?? 0), 0);
   const margin      = totalRev > 0 ? Math.round((totalProfit / totalRev) * 100) : 0;
+  const pendingVal  = completed.reduce((s, t) => s + taskValue(t), 0);
   const today       = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
   const month       = new Date().toLocaleDateString("en-GB", { month: "long", year: "numeric" });
 
+  const q = query.toLowerCase();
+  const rows = billable.filter((t) => !q || [t.title, t.id, t.engineerName, t.invoiceNumber ?? ""].some((v) => v.toLowerCase().includes(q)));
+
+  const columns: Column<Task>[] = [
+    { key: "inv", header: "Invoice", sort: (t) => t.invoiceNumber ?? "",
+      render: (t) => t.invoiceNumber
+        ? <span className="whitespace-nowrap font-mono text-xs text-fg">{t.invoiceNumber}</span>
+        : <span className="text-xs text-fg-faint">Not issued</span> },
+    { key: "task", header: "Task", sort: (t) => t.title,
+      render: (t) => (
+        <div className="min-w-[160px] max-w-[250px]">
+          <p className="truncate font-medium text-fg">{t.title}</p>
+          <p className="mt-0.5 truncate text-2xs text-fg-subtle"><span className="font-mono text-fg-faint">{t.id}</span> · {t.serviceLevel} · {t.visitDuration}</p>
+        </div>
+      ) },
+    { key: "eng", header: "Engineer", sort: (t) => t.engineerName, className: "hidden lg:table-cell",
+      render: (t) => <span className="flex items-center gap-2 whitespace-nowrap text-fg-muted"><Avatar name={t.engineerName} size={22} />{t.engineerName}</span> },
+    { key: "date", header: "Date", sort: (t) => t.checkOutTime || t.createdAt, className: "hidden lg:table-cell",
+      render: (t) => <span className="num whitespace-nowrap text-xs text-fg-subtle" title={fmtDate(t.checkOutTime || t.createdAt)}>{new Date(t.checkOutTime || t.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span> },
+    { key: "dur", header: "Duration", className: "hidden 2xl:table-cell",
+      render: (t) => <span className="num text-xs text-fg-subtle">{t.duration || calcDuration(t.checkInTime, t.checkOutTime)}</span> },
+    { key: "charge", header: "Charge", align: "right", sort: (t) => t.customerChargeUSD ?? taskValue(t),
+      render: (t) => t.customerChargeUSD != null
+        ? <span className="num font-medium text-fg">{fmtUSD(t.customerChargeUSD)}</span>
+        : <span className="num text-xs text-fg-faint" title="Engine estimate — confirmed on approval">~{fmtUSD(taskValue(t))}</span> },
+    { key: "fe", header: "FE pay", align: "right", className: "hidden sm:table-cell", sort: (t) => t.engineerPaymentUSD ?? 0,
+      render: (t) => t.engineerPaymentUSD != null ? <span className="num text-fg-muted">{fmtUSD(t.engineerPaymentUSD)}</span> : <span className="text-fg-faint">—</span> },
+    { key: "profit", header: "Profit", align: "right", sort: (t) => t.profit ?? 0,
+      render: (t) => t.profit != null ? <span className="num font-medium text-[#7bcfa2]">{fmtUSD(t.profit)}</span> : <span className="text-fg-faint">—</span> },
+    { key: "status", header: "Status", sort: (t) => t.status,
+      render: (t) => t.status === "approved" ? <Badge tone="ok">Approved</Badge> : <Badge tone="warn">Pending</Badge> },
+  ];
+
   return (
-    <div className="max-w-screen-lg">
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Invoice Summary</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Billing period: <span className="font-medium text-gray-700">{month}</span></p>
-        </div>
-        <div className="text-right">
-          <p className="text-xs text-gray-400">Generated</p>
-          <p className="text-sm font-semibold text-gray-700">{today}</p>
-        </div>
-      </div>
+    <div>
+      <PageHeader title="Invoice summary"
+        subtitle={<>Billing period <span className="text-fg-muted">{month}</span> · generated {today}</>} />
 
-      {/* KPIs */}
-      <div className="grid grid-cols-4 gap-4 mb-7">
-        {[
-          {
-            label: "Invoiced Tasks",
-            value: approved.length,
-            sub: `${completed.length} pending approval`,
-            accent: "",
-          },
-          {
-            label: "Total Revenue",
-            value: `$${totalRev.toLocaleString()}`,
-            sub: "customer charges",
-            accent: "border-l-4 border-l-orange-500",
-          },
-          {
-            label: "FE Payments",
-            value: `$${totalCost.toLocaleString()}`,
-            sub: "engineer cost",
-            accent: "border-l-4 border-l-red-400",
-          },
-          {
-            label: "Net Profit",
-            value: `$${totalProfit.toLocaleString()}`,
-            sub: `${margin}% margin`,
-            accent: "border-l-4 border-l-green-500",
-          },
-        ].map((card) => (
-          <div key={card.label} className={`bg-white border border-gray-200 rounded-lg p-4 ${card.accent}`}>
-            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">{card.label}</p>
-            <p className="text-3xl font-bold text-gray-900 mt-1">{card.value}</p>
-            <p className="text-xs text-gray-400 mt-0.5">{card.sub}</p>
-          </div>
-        ))}
-      </div>
+      <StatStrip>
+        <Stat label="Invoiced tasks" value={approved.length} foot={`${completed.length} pending approval`} />
+        <Stat label="Total revenue" value={fmtUSD(totalRev)} foot="Customer charges" accent />
+        <Stat label="FE payments" value={fmtUSD(totalCost)} foot="Engineer cost" />
+        <Stat label="Net profit" value={fmtUSD(totalProfit)} foot={`${margin}% margin`} />
+      </StatStrip>
 
-      {/* Table */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+      <section className="overflow-hidden rounded-xl border border-line bg-panel">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 pb-3 pt-3.5 sm:px-5">
           <div>
-            <h2 className="text-sm font-semibold text-gray-800">Task Billing</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Approved and pending tasks</p>
+            <h2 className="text-[13px] font-semibold tracking-tight text-fg">Task billing</h2>
+            <p className="mt-0.5 text-2xs text-fg-subtle">Approved and pending tasks · {fmtUSD(pendingVal)} awaiting approval</p>
           </div>
-          <span className="text-xs font-medium text-gray-500 bg-gray-100 px-3 py-1.5 rounded-md">{billable.length} records</span>
+          <div className="relative w-full sm:w-64">
+            <Icons.Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-faint" />
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter invoices…" aria-label="Filter invoices"
+              className="h-8 w-full rounded-lg bg-canvas pl-8 pr-3 text-[13px] text-fg placeholder:text-fg-faint ring-1 ring-inset ring-line-strong focus:outline-none focus:ring-2 focus:ring-brand/70" />
+          </div>
         </div>
 
         {billable.length === 0 ? (
-          <div className="py-16 text-center">
-            <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
-              </svg>
-            </div>
-            <p className="text-sm font-medium text-gray-500">No billable tasks yet</p>
-            <p className="text-xs text-gray-400 mt-1">Complete and approve tasks in the dashboard to generate invoices</p>
+          <div className="border-t border-line py-16 text-center">
+            <Icons.Invoice size={22} className="mx-auto text-fg-faint" />
+            <p className="mt-3 text-[13px] font-medium text-fg-muted">No billable tasks yet</p>
+            <p className="mt-1 text-xs text-fg-subtle">Complete and approve tasks in the dashboard to generate invoices</p>
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500 uppercase tracking-wider">
-                    <th className="text-left px-4 py-3 font-semibold">Invoice #</th>
-                    <th className="text-left px-4 py-3 font-semibold">Task</th>
-                    <th className="text-left px-4 py-3 font-semibold">Engineer</th>
-                    <th className="text-left px-4 py-3 font-semibold">SLA</th>
-                    <th className="text-left px-4 py-3 font-semibold">Date</th>
-                    <th className="text-left px-4 py-3 font-semibold">Duration</th>
-                    <th className="text-right px-4 py-3 font-semibold">Charge</th>
-                    <th className="text-right px-4 py-3 font-semibold">FE Pay</th>
-                    <th className="text-right px-4 py-3 font-semibold">Profit</th>
-                    <th className="text-left px-4 py-3 font-semibold">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {billable.map((t) => (
-                    <tr key={t.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3">
-                        {t.invoiceNumber ? (
-                          <span className="text-xs font-mono font-semibold text-green-700 bg-green-50 px-2 py-0.5 rounded">{t.invoiceNumber}</span>
-                        ) : (
-                          <span className="text-xs text-gray-400">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-gray-800 text-xs leading-tight">{t.title}</p>
-                        <p className="text-xs text-gray-400 font-mono mt-0.5">{t.id}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 rounded-full bg-orange-100 flex items-center justify-center text-xs font-bold text-orange-600 shrink-0">
-                            {t.engineerName.charAt(0)}
-                          </div>
-                          <span className="text-gray-700 text-xs">{t.engineerName}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="space-y-0.5">
-                          <span className="block text-xs font-medium px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 w-fit">{t.serviceLevel}</span>
-                          <span className="block text-xs text-gray-400">{t.visitDuration}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-gray-500 text-xs tabular-nums">{fmtDate(t.checkOutTime || t.createdAt)}</td>
-                      <td className="px-4 py-3 text-gray-500 text-xs tabular-nums">
-                        {t.duration || calcDuration(t.checkInTime, t.checkOutTime)}
-                      </td>
-                      <td className="px-4 py-3 text-right font-semibold text-gray-800">
-                        {t.customerChargeUSD != null ? `$${t.customerChargeUSD}` : "—"}
-                      </td>
-                      <td className="px-4 py-3 text-right text-red-500 font-medium">
-                        {t.engineerPaymentUSD != null ? `$${t.engineerPaymentUSD}` : "—"}
-                      </td>
-                      <td className="px-4 py-3 text-right font-bold text-green-600">
-                        {t.profit != null ? `$${t.profit}` : "—"}
-                      </td>
-                      <td className="px-4 py-3">
-                        {t.status === "approved" ? (
-                          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-50 text-green-700">Approved</span>
-                        ) : (
-                          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">Pending</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="border-t-2 border-gray-200 bg-gray-50">
-              <div className="flex items-center justify-end px-5 py-4 gap-12 text-sm">
-                <div className="text-right">
-                  <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Total Revenue</p>
-                  <p className="text-lg font-bold text-gray-900 mt-0.5">${totalRev.toLocaleString()}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Total FE Cost</p>
-                  <p className="text-lg font-bold text-red-500 mt-0.5">${totalCost.toLocaleString()}</p>
-                </div>
-                <div className="text-right border-l border-gray-300 pl-12">
-                  <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Net Profit</p>
-                  <p className="text-2xl font-bold text-green-600 mt-0.5">${totalProfit.toLocaleString()}</p>
-                </div>
+            <DataTable rows={rows} columns={columns} rowKey={(t) => t.id} pageSize={15}
+              initialSort={{ key: "date", dir: "desc" }} />
+            <div className="flex flex-wrap items-center justify-end gap-x-10 gap-y-3 border-t border-line bg-raised/60 px-5 py-4">
+              <div className="text-right">
+                <p className="text-2xs font-medium uppercase tracking-[0.06em] text-fg-subtle">Total revenue</p>
+                <p className="num mt-1 text-[17px] font-semibold text-fg">{fmtUSD(totalRev)}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-2xs font-medium uppercase tracking-[0.06em] text-fg-subtle">Total FE cost</p>
+                <p className="num mt-1 text-[17px] font-semibold text-fg-muted">{fmtUSD(totalCost)}</p>
+              </div>
+              <div className="border-l border-line-strong pl-10 text-right">
+                <p className="text-2xs font-medium uppercase tracking-[0.06em] text-fg-subtle">Net profit</p>
+                <p className="num mt-1 text-[22px] font-semibold text-[#7bcfa2]">{fmtUSD(totalProfit)}</p>
               </div>
             </div>
           </>
         )}
-      </div>
+      </section>
     </div>
   );
 }

@@ -1,26 +1,66 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
+/* ── Design tokens ──────────────────────────────────────────────────────────
+   Charcoal foundation, neutral content, orange reserved for action, active
+   state and meaning. Semantic hues are desaturated so they read as signal. */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-canvas:      #0f0f10;
+  --color-panel:       #161617;
+  --color-raised:      #1c1c1e;
+  --color-hover:       #222224;
+  --color-line:        #29292c;
+  --color-line-strong: #38383c;
+
+  --color-fg:          #ededee;
+  --color-fg-muted:    #a6a6ac;
+  --color-fg-subtle:   #8b8b92;
+  --color-fg-faint:    #5f5f66;
+
+  --color-brand:        #f97316;
+  --color-brand-strong: #ea580c;
+  --color-brand-soft:   #fb923c;
+  --color-brand-tint:   rgb(249 115 22 / 0.12);
+
+  --color-ok:   #46b37b;
+  --color-warn: #e9a23b;
+  --color-crit: #e5534b;
+  --color-info: #5b9cf0;
+
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-canvas);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+}
+
+/* Admin shell is dark-only; the FE workspace keeps its own light theme */
+.admin-shell { color-scheme: dark; font-feature-settings: "cv11", "ss01"; }
+
+/* Numbers in tables/KPIs line up */
+.num { font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+
+/* Focus ring — visible, on-brand, keyboard only */
+.admin-shell :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+/* Thin, quiet scrollbars inside the dark shell */
+.scroll-thin { scrollbar-width: thin; scrollbar-color: #3a3a3e transparent; }
+
+@keyframes fade-in  { from { opacity: 0 } to { opacity: 1 } }
+@keyframes slide-in { from { transform: translateX(16px); opacity: 0 } to { transform: none; opacity: 1 } }
+@keyframes pop-in   { from { transform: translateY(4px) scale(.98); opacity: 0 } to { transform: none; opacity: 1 } }
+.anim-fade  { animation: fade-in 180ms ease-out both; }
+.anim-slide { animation: slide-in 220ms cubic-bezier(.2,.8,.2,1) both; }
+.anim-pop   { animation: pop-in 180ms cubic-bezier(.2,.8,.2,1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; }
 }
