@@ -19,7 +19,6 @@ export {
 
 // ─── Task status lifecycle ────────────────────────────────────────────────────
 export type TaskStatus =
-  | "pending"     // created from an Orange email, waiting for admin to assign an FE
   | "assigned"    // created by admin, waiting for FE to accept
   | "accepted"    // FE accepted, not yet on site
   | "rejected"    // FE rejected with reason
@@ -68,6 +67,9 @@ export interface Task {
   siteId?:             string;
   product?:            string;          // product / serial from the dispatch
   scheduledAt?:        string;          // requested arrival (ETA early start), ISO
+  openedAt?:           string;          // when Orange opened the work order, ISO
+  asp?:                string;          // Orange's partner code, e.g. "ASP_PK Exponentia1"
+  pricingBasis?:       string[];        // why each pricing input was chosen (automatic jobs)
   assignedBy?:         string;          // Orange dispatcher name
   siteContact?:        string;          // on-site contact as written in the dispatch
   onSiteTimes?:        OnSiteTimes;     // from the "Cleared" notification
@@ -83,7 +85,7 @@ export interface OnSiteTimes {
   travelStop?: string;
 }
 
-export type EmailKind = "dispatch" | "photo" | "cleared";
+export type EmailKind = "dispatch" | "photo" | "cleared" | "update";
 
 export interface EmailEvent {
   kind:      EmailKind;

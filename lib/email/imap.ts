@@ -23,7 +23,7 @@ export function mailConfig(): MailConfig | null {
     user,
     pass: pass.replace(/\s+/g, ""), // Gmail shows app passwords in groups of four
     folder: process.env.MAIL_FOLDER || "INBOX",
-    lookbackDays: Number(process.env.MAIL_LOOKBACK_DAYS || 14),
+    lookbackDays: Number(process.env.MAIL_LOOKBACK_DAYS || 30),
   };
 }
 
@@ -43,8 +43,18 @@ function writeState(s: SyncState) {
   } catch { memState = s; }
 }
 
-/** Fetch notifications that arrived since the last run (or the lookback window on first run). */
-export async function fetchNewMail(cfg: MailConfig): Promise<{ emails: IncomingEmail[]; scanned: number }> {
+/**
+ * Remember how far the mailbox has been read. Pass the UID just before the
+ * first email that should be retried (AI limit reached, AI off or failed).
+ */
+export function saveSyncPosition(validity: string | undefined, lastUid: number) {
+  writeState({ uidValidity: validity, lastUid, lastRunAt: new Date().toISOString() });
+}
+
+/** Fetch candidate emails that arrived since the last run (or the lookback window on first run). */
+export async function fetchNewMail(cfg: MailConfig): Promise<{
+  emails: IncomingEmail[]; scanned: number; validity?: string; maxUid: number; prevUid: number;
+}> {
   const client = new ImapFlow({
     host: cfg.host, port: cfg.port, secure: cfg.port === 993,
     auth: { user: cfg.user, pass: cfg.pass },
@@ -58,10 +68,14 @@ export async function fetchNewMail(cfg: MailConfig): Promise<{ emails: IncomingE
     const state = readState();
     const fresh = !state.lastUid || state.uidValidity !== validity;
 
-    const criteria = fresh
-      ? { since: new Date(Date.now() - cfg.lookbackDays * 86_400_000) }
-      : { uid: `${state.lastUid! + 1}:*` };
-    const uids = ((await client.search({ ...criteria, or: [{ from: "orange.com" }, { subject: "Work Order" }] }, { uid: true })) || [])
+    const range = fresh ? {} : { uid: `${state.lastUid! + 1}:*` };
+    const since = fresh ? { since: new Date(Date.now() - cfg.lookbackDays * 86_400_000) } : {};
+    // Narrow the server-side search to mail that could be about Orange field work.
+    // Gmail understands its own search syntax, which also matches forwarded mail.
+    const criteria = /gmail/i.test(cfg.host)
+      ? { ...range, ...since, gmraw: `("work order" OR OBS OR OBSLink OR orange OR FLIP OR "field engineer" OR dispatch)` }
+      : { ...range, ...since, or: [{ from: "orange.com" }, { subject: "Work Order" }, { subject: "OBS" }, { body: "orange.com" }] };
+    const uids = ((await client.search(criteria, { uid: true })) || [])
       .filter((u) => fresh || u > (state.lastUid ?? 0));
 
     const emails: IncomingEmail[] = [];
@@ -77,12 +91,12 @@ export async function fetchNewMail(cfg: MailConfig): Promise<{ emails: IncomingE
           date:      (parsed.date ?? new Date()).toISOString(),
           messageId: parsed.messageId ?? `uid-${validity}-${msg.uid}`,
           text:      parsed.text ?? "",
+          uid:       msg.uid,
         });
       }
     }
-    writeState({ uidValidity: validity, lastUid: maxUid || state.lastUid, lastRunAt: new Date().toISOString() });
     emails.sort((a, b) => a.date.localeCompare(b.date)); // dispatch before updates
-    return { emails, scanned: uids.length };
+    return { emails, scanned: uids.length, validity, maxUid, prevUid: state.lastUid ?? 0 };
   } finally {
     lock.release();
     await client.logout().catch(() => {});

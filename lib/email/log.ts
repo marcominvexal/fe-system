@@ -25,6 +25,7 @@ export interface MailLogEntry {
   outcome:     MailOutcome;
   reason?:     string;
   taskId?:     string;
+  viaAi?:      boolean;          // read by Gemini rather than a fixed template
 }
 
 export interface SyncRun {
@@ -79,9 +80,18 @@ export function recordBatch(
   for (const { mail, outcome } of results) {
     const existing = byId.get(mail.messageId);
     if (existing) {
-      // Seen before: keep the original outcome, just note it came round again
       existing.lastSeenAt = now;
       existing.seenCount += 1;
+      // A retry that now succeeded replaces the earlier "ignored" result
+      if (existing.outcome === "ignored" && outcome.status !== "ignored" && outcome.status !== "duplicate") {
+        existing.outcome = outcome.status;
+        existing.reason = undefined;
+        existing.taskId = "taskId" in outcome ? outcome.taskId : existing.taskId;
+        existing.workOrder = "workOrder" in outcome ? outcome.workOrder : existing.workOrder;
+        if ("viaAi" in outcome && outcome.viaAi) { existing.kind = "update"; existing.viaAi = true; }
+      } else if (existing.outcome === "ignored" && outcome.status === "ignored") {
+        existing.reason = outcome.reason;
+      }
       continue;
     }
     const c = classify(mail.subject);
@@ -94,7 +104,8 @@ export function recordBatch(
       processedAt: now,
       lastSeenAt:  now,
       seenCount:   1,
-      kind:      c?.kind ?? null,
+      kind:      "viaAi" in outcome && outcome.viaAi ? "update" : c?.kind ?? null,
+      viaAi:     "viaAi" in outcome && outcome.viaAi ? true : undefined,
       workOrder: "workOrder" in outcome ? outcome.workOrder : c?.workOrder,
       outcome:   outcome.status,
       reason:    outcome.status === "ignored" ? outcome.reason : outcome.status === "duplicate" ? "Already applied to this job" : undefined,

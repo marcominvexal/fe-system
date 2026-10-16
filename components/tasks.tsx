@@ -181,11 +181,10 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   return <p className="mb-2.5 text-2xs font-medium uppercase tracking-[0.08em] text-fg-subtle">{children}</p>;
 }
 
-export function DetailPanel({ task, onClose, onApprove, onAssign, onCancelClick, onEditClick, onReassignClick }: {
+export function DetailPanel({ task, onClose, onApprove, onCancelClick, onEditClick, onReassignClick }: {
   task: Task;
   onClose: () => void;
   onApprove: (id: string) => Promise<void>;
-  onAssign: (id: string, payload: AssignPayload) => Promise<void>;
   onCancelClick: () => void;
   onEditClick: () => void;
   onReassignClick: () => void;
@@ -237,7 +236,6 @@ export function DetailPanel({ task, onClose, onApprove, onAssign, onCancelClick,
 
       {/* Body */}
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto px-5 py-5">
-        {task.status === "pending" && <AssignPanel task={task} onAssign={onAssign} />}
         {task.source === "email" && <OrangeDetails task={task} />}
         <div className="grid grid-cols-2 gap-x-6 gap-y-4">
           <Field label="Customer">{task.customer}</Field>
@@ -302,6 +300,7 @@ export function DetailPanel({ task, onClose, onApprove, onAssign, onCancelClick,
           )}
         </div>
 
+        {task.pricingBasis && task.pricingBasis.length > 0 && <PricingBasis lines={task.pricingBasis} />}
         {task.emailLog && task.emailLog.length > 0 && <EmailTrail task={task} />}
 
         <div>
@@ -366,13 +365,8 @@ export function DetailPanel({ task, onClose, onApprove, onAssign, onCancelClick,
 }
 
 // ── Email-automation pieces ───────────────────────────────────────────────────
-export interface AssignPayload {
-  engineerId: string; engineerName: string;
-  maintenanceLevel: MaintenanceLevel; serviceLevel: ServiceLevel;
-  distanceBand: DistanceBand; visitDuration: VisitDuration;
-}
 
-function Expandable({ text }: { text: string }) {
+export function Expandable({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
   const long = text.split("\n").length > 6 || text.length > 420;
   return (
@@ -414,7 +408,7 @@ function OrangeDetails({ task }: { task: Task }) {
   );
 }
 
-const EMAIL_DOT: Record<string, string> = { dispatch: "bg-info", photo: "bg-fg-subtle", cleared: "bg-ok" };
+const EMAIL_DOT: Record<string, string> = { dispatch: "bg-info", photo: "bg-fg-subtle", cleared: "bg-ok", update: "bg-brand" };
 
 function EmailTrail({ task }: { task: Task }) {
   const t = task.onSiteTimes;
@@ -452,53 +446,23 @@ function EmailTrail({ task }: { task: Task }) {
   );
 }
 
-function AssignPanel({ task, onAssign }: { task: Task; onAssign: (id: string, p: AssignPayload) => Promise<void> }) {
-  const [engId, setEngId] = useState(engineers[0].id);
-  const [ml, setMl] = useState<MaintenanceLevel>(task.maintenanceLevel);
-  const [sl, setSl] = useState<ServiceLevel>(task.serviceLevel);
-  const [db, setDb] = useState<DistanceBand>(task.distanceBand);
-  const [vd, setVd] = useState<VisitDuration>(task.visitDuration);
-  const [busy, setBusy] = useState(false);
-  const price = calculateCommercial(ml, sl, db, vd);
-  const submit = async () => {
-    setBusy(true);
-    const eng = engineers.find((e) => e.id === engId)!;
-    await onAssign(task.id, { engineerId: eng.id, engineerName: eng.name, maintenanceLevel: ml, serviceLevel: sl, distanceBand: db, visitDuration: vd });
-    setBusy(false);
-  };
+export function PricingBasis({ lines }: { lines: string[] }) {
   return (
-    <div className="rounded-lg border border-warn/30 bg-warn/[0.05] p-4">
-      <p className="text-[13px] font-semibold text-fg">Assign this work order</p>
-      <p className="mt-0.5 text-xs text-fg-subtle">
-        Created from an Orange email. Pick the engineer and confirm the pricing inputs, which Orange does not send.
-        {task.checkOutTime && " Orange already reported this visit as cleared, so it will go straight to approval."}
-      </p>
-      <div className="mt-3 grid grid-cols-2 gap-3">
-        <div className="col-span-2"><label className={labelCls} htmlFor="a-eng">Engineer</label>
-          <Select id="a-eng" value={engId} onChange={(e) => setEngId(e.target.value)}>
-            {engineers.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-          </Select></div>
-        <div><label className={labelCls} htmlFor="a-ml">Maintenance</label>
-          <Select id="a-ml" value={ml} onChange={(e) => setMl(e.target.value as MaintenanceLevel)}>
-            {MAINTENANCE_LEVELS.map((m) => <option key={m}>{m}</option>)}
-          </Select></div>
-        <div><label className={labelCls} htmlFor="a-sl">SLA</label>
-          <Select id="a-sl" value={sl} onChange={(e) => setSl(e.target.value as ServiceLevel)}>
-            {SERVICE_LEVELS.map((m) => <option key={m}>{m}</option>)}
-          </Select></div>
-        <div><label className={labelCls} htmlFor="a-db">Distance</label>
-          <Select id="a-db" value={db} onChange={(e) => setDb(e.target.value as DistanceBand)}>
-            {DISTANCE_BANDS.map((m) => <option key={m}>{m}</option>)}
-          </Select></div>
-        <div><label className={labelCls} htmlFor="a-vd">Visit length{task.onSiteTimes ? " (from Orange)" : ""}</label>
-          <Select id="a-vd" value={vd} onChange={(e) => setVd(e.target.value as VisitDuration)}>
-            {VISIT_DURATIONS.map((m) => <option key={m}>{m}</option>)}
-          </Select></div>
-      </div>
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-fg-subtle">Customer charge <span className="num font-semibold text-fg">${price.customerChargeUSD}</span> · FE pay <span className="num text-fg-muted">${price.engineerPaymentUSD}</span></p>
-        <Button variant="primary" onClick={submit} disabled={busy}>{busy ? "Assigning…" : "Assign engineer"}</Button>
-      </div>
+    <div>
+      <SectionLabel>How this job was priced</SectionLabel>
+      <ul className="space-y-1.5 rounded-lg border border-line bg-canvas/50 px-3.5 py-3">
+        {lines.map((l) => {
+          const flagged = /default|not in the|verify/i.test(l);
+          const [head, ...rest] = l.split(" — ");
+          return (
+            <li key={l} className="flex items-start gap-2 text-xs">
+              {flagged ? <Icons.Alert size={12} className="mt-0.5 shrink-0 text-[#f0bd6d]" /> : <Icons.Check size={12} className="mt-0.5 shrink-0 text-[#7bcfa2]" />}
+              <span><span className="font-medium text-fg">{head}</span>{rest.length > 0 && <span className="text-fg-subtle"> — {rest.join(" — ")}</span>}</span>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="mt-1.5 text-2xs text-fg-faint">Set automatically from Orange&apos;s emails. Rules live in lib/email/rules.ts.</p>
     </div>
   );
 }

@@ -59,7 +59,7 @@ export default function InvoicesPage() {
 
   return (
     <div>
-      <PageHeader title="Invoice summary"
+      <PageHeader title="Billing"
         subtitle={<>Billing period <span className="text-fg-muted">{month}</span> · generated {today}</>} />
 
       <StatStrip>

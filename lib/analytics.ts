@@ -29,8 +29,8 @@ const H   = 3_600_000;
 const DAY = 24 * H;
 const ts  = (iso?: string) => (iso ? new Date(iso).getTime() : NaN);
 
-export const OPEN_STATUSES: TaskStatus[] = ["pending", "assigned", "accepted", "in_progress", "completed"];
-const AWAITING_ARRIVAL: TaskStatus[] = ["pending", "assigned", "accepted"];
+export const OPEN_STATUSES: TaskStatus[] = ["assigned", "accepted", "in_progress", "completed"];
+const AWAITING_ARRIVAL: TaskStatus[] = ["assigned", "accepted"];
 
 // ── SLA ──────────────────────────────────────────────────────────────────────
 export type SlaState = "met" | "breached" | "at_risk" | "on_track" | "n/a";
@@ -172,11 +172,10 @@ export function pctChange(cur: number | null, prev: number | null): number | nul
 
 // ── Pipeline / work-in-progress ──────────────────────────────────────────────
 export const PIPELINE: { status: TaskStatus; label: string }[] = [
-  { status: "pending",     label: "Needs assignment" },
-  { status: "assigned",    label: "Assigned" },
-  { status: "accepted",    label: "Accepted" },
+  { status: "assigned",    label: "Dispatched" },
+  { status: "accepted",    label: "Acknowledged" },
   { status: "in_progress", label: "On site" },
-  { status: "completed",   label: "Awaiting approval" },
+  { status: "completed",   label: "Cleared, not billed" },
 ];
 
 export function pipeline(tasks: Task[]) {
@@ -193,10 +192,15 @@ export function attention(tasks: Task[], now = Date.now()) {
   const breached   = open.filter((t) => slaState(t, now) === "breached");
   const atRisk     = open.filter((t) => slaState(t, now) === "at_risk");
   const rejected   = tasks.filter((t) => t.status === "rejected");
-  const unassigned = tasks.filter((t) => t.status === "pending");
+  // Email jobs whose booked visit time has passed but Orange has not cleared yet
+  const awaitingClosure = tasks.filter((t) =>
+    t.source === "email" && ["assigned", "accepted", "in_progress"].includes(t.status) &&
+    !!t.scheduledAt && new Date(t.scheduledAt).getTime() < now);
   return {
     awaiting, awaitingValue: awaiting.reduce((s, t) => s + taskValue(t), 0),
-    breached, atRisk, rejected, unassigned,
+    breached, atRisk, rejected, awaitingClosure,
+    awaitingClosureValue: awaitingClosure.reduce((s, t) => s + taskValue(t), 0),
+    pricingCheck: tasks.filter((t) => t.status !== "cancelled" && t.pricingBasis?.some((b) => /default|not in the|verify/i.test(b))),
   };
 }
 

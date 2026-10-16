@@ -23,6 +23,7 @@ const KIND: Record<string, { label: string; tone: Tone }> = {
   dispatch: { label: "Dispatch", tone: "info" },
   photo:    { label: "Photo", tone: "neutral" },
   cleared:  { label: "Cleared", tone: "ok" },
+  update:   { label: "AI read", tone: "brand" },
 };
 
 const OUTCOME: Record<MailOutcome, { label: string; tone: Tone }> = {
