@@ -10,12 +10,12 @@ export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Bool
 // Few hues: neutral for queued, blue for acknowledged, orange for live work,
 // amber for "needs you", green for done, red for failure.
 export const STATUS_LABEL: Record<TaskStatus, string> = {
-  assigned:    "Assigned",
-  accepted:    "Accepted",
+  assigned:    "Dispatched",
+  accepted:    "Acknowledged",
   rejected:    "Rejected",
-  in_progress: "In Progress",
-  completed:   "Awaiting Approval",
-  approved:    "Approved",
+  in_progress: "On Site",
+  completed:   "Cleared",
+  approved:    "Billed",
   cancelled:   "Cancelled",
 };
 const STATUS_TONE: Record<TaskStatus, Tone> = {
@@ -59,7 +59,7 @@ export function Panel({ title, subtitle, actions, children, className, bodyClass
   children: React.ReactNode; className?: string; bodyClass?: string; id?: string;
 }) {
   return (
-    <section id={id} className={cx("rounded-xl border border-line bg-panel", className)}>
+    <section id={id} className={cx("min-w-0 rounded-xl border border-line bg-panel", className)}>
       {(title || actions) && (
         <header className="flex items-start justify-between gap-3 px-4 pt-3.5 pb-3 sm:px-5">
           <div className="min-w-0">

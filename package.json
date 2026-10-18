@@ -10,12 +10,16 @@
     "seed": "node --experimental-strip-types scripts/seed.ts"
   },
   "dependencies": {
+    "@kenjiuno/msgreader": "^1.29.0",
+    "imapflow": "^2.4.3",
+    "mailparser": "^3.9.39",
     "next": "16.2.9",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/mailparser": "^3.9.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

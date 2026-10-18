@@ -9,7 +9,7 @@ import {
   calcDuration, fmtDate,
 } from "@/lib/store";
 import { calculateCommercial } from "@/lib/commercialEngine";
-import { slaState, slaHoursLeft, SLA_TARGET_HOURS, fmtHrs, responseHours } from "@/lib/analytics";
+import { slaState, slaHoursLeft, lateByHours, SLA_TARGET_HOURS, fmtHrs, responseHours } from "@/lib/analytics";
 import { Icons } from "./icons";
 import {
   Avatar, Badge, Button, Drawer, Modal, Select, StatusBadge, cx,
@@ -44,7 +44,7 @@ export function SlaTag({ task }: { task: Task }) {
   if (s === "n/a") return <span className="text-fg-faint">—</span>;
   if (s === "met") return <Badge tone="ok" dot={false}>Met · {fmtHrs(responseHours(task) ?? null)}</Badge>;
   if (s === "breached") {
-    const over = task.checkInTime ? (responseHours(task) ?? 0) - SLA_TARGET_HOURS[task.serviceLevel] : -slaHoursLeft(task);
+    const over = lateByHours(task);
     return <Badge tone="crit" dot={false}>Breached +{fmtHrs(over)}</Badge>;
   }
   if (s === "at_risk") return <Badge tone="warn" dot={false}>{fmtHrs(slaHoursLeft(task))} left</Badge>;
@@ -236,6 +236,7 @@ export function DetailPanel({ task, onClose, onApprove, onCancelClick, onEditCli
 
       {/* Body */}
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto px-5 py-5">
+        {task.source === "email" && <OrangeDetails task={task} />}
         <div className="grid grid-cols-2 gap-x-6 gap-y-4">
           <Field label="Customer">{task.customer}</Field>
           <Field label="Engineer">
@@ -244,7 +245,7 @@ export function DetailPanel({ task, onClose, onApprove, onCancelClick, onEditCli
           <Field label="Location" span><span className="flex items-center gap-1.5 text-fg-muted"><Icons.MapPin size={13} className="text-fg-faint" />{task.location}</span></Field>
           <Field label="Work type">{task.maintenanceType}</Field>
           <Field label="Visit duration">{task.visitDuration}</Field>
-          {task.description && <Field label="Description" span><p className="leading-relaxed text-fg-muted">{task.description}</p></Field>}
+          {task.description && <Field label="Description" span><Expandable text={task.description} /></Field>}
         </div>
 
         <div>
@@ -263,7 +264,7 @@ export function DetailPanel({ task, onClose, onApprove, onCancelClick, onEditCli
             ))}
           </div>
           <div className="mt-2 flex items-center justify-between text-xs text-fg-subtle">
-            <span>Response target {SLA_TARGET_HOURS[task.serviceLevel]}h</span>
+            <span>{task.scheduledAt ? <>Booked arrival {fmtDate(task.scheduledAt)}</> : <>Response target {SLA_TARGET_HOURS[task.serviceLevel]}h</>}</span>
             <SlaTag task={task} />
           </div>
         </div>
@@ -299,10 +300,13 @@ export function DetailPanel({ task, onClose, onApprove, onCancelClick, onEditCli
           )}
         </div>
 
+        {task.pricingBasis && task.pricingBasis.length > 0 && <PricingBasis lines={task.pricingBasis} />}
+        {task.emailLog && task.emailLog.length > 0 && <EmailTrail task={task} />}
+
         <div>
           <SectionLabel>Engineer comments</SectionLabel>
           {task.comments ? (
-            <p className="rounded-lg border border-line bg-canvas/50 px-3.5 py-3 text-[13px] leading-relaxed text-fg-muted">{task.comments}</p>
+            <p className="whitespace-pre-wrap rounded-lg border border-line bg-canvas/50 px-3.5 py-3 text-[13px] leading-relaxed text-fg-muted">{task.comments}</p>
           ) : (
             <p className="text-xs text-fg-faint">No comments recorded.</p>
           )}
@@ -357,6 +361,109 @@ export function DetailPanel({ task, onClose, onApprove, onCancelClick, onEditCli
         )}
       </div>
     </Drawer>
+  );
+}
+
+// ── Email-automation pieces ───────────────────────────────────────────────────
+
+export function Expandable({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const long = text.split("\n").length > 6 || text.length > 420;
+  return (
+    <div>
+      <p className={cx("whitespace-pre-wrap leading-relaxed text-fg-muted", !open && long && "line-clamp-6")}>{text}</p>
+      {long && (
+        <button onClick={() => setOpen(!open)} className="mt-1 text-xs font-medium text-brand-soft hover:text-brand">
+          {open ? "Show less" : "Show full dispatch notes"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function OrangeDetails({ task }: { task: Task }) {
+  const rows = [
+    { l: "Work order", v: task.workOrder && <span className="font-mono">{task.workOrder}</span> },
+    { l: "End customer", v: task.endCustomer },
+    { l: "Site", v: task.siteId },
+    { l: "Product", v: task.product },
+    { l: "Booked arrival", v: task.scheduledAt && fmtDate(task.scheduledAt) },
+    { l: "Dispatched by", v: task.assignedBy },
+    { l: "Site contact", v: task.siteContact },
+  ].filter((r) => r.v);
+  return (
+    <div className="overflow-hidden rounded-lg border border-line">
+      <p className="flex items-center gap-2 border-b border-line bg-white/[0.02] px-3.5 py-2 text-2xs font-medium uppercase tracking-[0.06em] text-fg-subtle">
+        <Icons.Mail size={12} className="text-brand" />Orange Business work order
+      </p>
+      <dl className="grid grid-cols-[120px_minmax(0,1fr)] gap-x-3 gap-y-2 px-3.5 py-3 text-[13px]">
+        {rows.map((r) => (
+          <div key={r.l} className="contents">
+            <dt className="text-fg-subtle">{r.l}</dt>
+            <dd className="min-w-0 break-words text-fg">{r.v}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+const EMAIL_DOT: Record<string, string> = { dispatch: "bg-info", photo: "bg-fg-subtle", cleared: "bg-ok", update: "bg-brand" };
+
+function EmailTrail({ task }: { task: Task }) {
+  const t = task.onSiteTimes;
+  const log = task.emailLog ?? [];
+  const stamps = (t ? [
+    ["Travel start", t.travelStart], ["Arrived on site", t.arriveOnSite], ["Work start", t.workStart],
+    ["Work stop", t.workStop], ["Left site", t.leaveSite], ["Travel stop", t.travelStop],
+  ] : []).filter(([, v]) => v) as [string, string][];
+  return (
+    <div>
+      <SectionLabel>Email trail · {log.length} notification{log.length === 1 ? "" : "s"}</SectionLabel>
+      <ol className="space-y-2.5">
+        {log.map((e) => (
+          <li key={e.messageId} className="flex items-start gap-3">
+            <span className={cx("mt-1.5 h-[7px] w-[7px] shrink-0 rounded-full", EMAIL_DOT[e.kind] ?? "bg-fg-subtle")} />
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] text-fg">{e.note}</p>
+              <p className="truncate text-2xs text-fg-subtle" title={e.subject}>{e.subject}</p>
+            </div>
+            <span className="num shrink-0 text-2xs text-fg-faint">{fmtDate(e.at)}</span>
+          </li>
+        ))}
+      </ol>
+      {stamps.length > 0 && (
+        <div className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-3">
+          {stamps.map(([l, v]) => (
+            <div key={l} className="bg-panel px-3 py-2">
+              <p className="text-2xs text-fg-subtle">{l}</p>
+              <p className="num mt-0.5 text-xs text-fg">{new Date(v).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function PricingBasis({ lines }: { lines: string[] }) {
+  return (
+    <div>
+      <SectionLabel>How this job was priced</SectionLabel>
+      <ul className="space-y-1.5 rounded-lg border border-line bg-canvas/50 px-3.5 py-3">
+        {lines.map((l) => {
+          const flagged = /default|not in the|verify/i.test(l);
+          const [head, ...rest] = l.split(" — ");
+          return (
+            <li key={l} className="flex items-start gap-2 text-xs">
+              {flagged ? <Icons.Alert size={12} className="mt-0.5 shrink-0 text-[#f0bd6d]" /> : <Icons.Check size={12} className="mt-0.5 shrink-0 text-[#7bcfa2]" />}
+              <span><span className="font-medium text-fg">{head}</span>{rest.length > 0 && <span className="text-fg-subtle"> — {rest.join(" — ")}</span>}</span>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="mt-1.5 text-2xs text-fg-faint">Set automatically from Orange&apos;s emails. Rules live in lib/email/rules.ts.</p>
+    </div>
   );
 }
 

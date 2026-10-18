@@ -59,6 +59,40 @@ export interface Task {
   invoiceNumber?:      string;
   cancelledAt?:        string;
   cancelReason?:       string;
+
+  // ── Email automation (Orange Business OBSLink notifications) ──
+  source?:             "manual" | "email";
+  workOrder?:          string;          // e.g. "18531881-1"
+  endCustomer?:        string;          // e.g. "GLAXOSMITHKLINE SERVICES UNLIMITED"
+  siteId?:             string;
+  product?:            string;          // product / serial from the dispatch
+  scheduledAt?:        string;          // requested arrival (ETA early start), ISO
+  openedAt?:           string;          // when Orange opened the work order, ISO
+  asp?:                string;          // Orange's partner code, e.g. "ASP_PK Exponentia1"
+  pricingBasis?:       string[];        // why each pricing input was chosen (automatic jobs)
+  assignedBy?:         string;          // Orange dispatcher name
+  siteContact?:        string;          // on-site contact as written in the dispatch
+  onSiteTimes?:        OnSiteTimes;     // from the "Cleared" notification
+  emailLog?:           EmailEvent[];
+}
+
+export interface OnSiteTimes {
+  travelStart?: string;
+  arriveOnSite?: string;
+  workStart?: string;
+  workStop?: string;
+  leaveSite?: string;
+  travelStop?: string;
+}
+
+export type EmailKind = "dispatch" | "photo" | "cleared" | "update";
+
+export interface EmailEvent {
+  kind:      EmailKind;
+  at:        string;   // email date, ISO
+  subject:   string;
+  messageId: string;
+  note?:     string;
 }
 
 // ─── Reference data (client-safe) ─────────────────────────────────────────────

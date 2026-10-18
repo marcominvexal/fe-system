@@ -10,11 +10,11 @@ import { Avatar, cx } from "@/components/ui";
 import { attention } from "@/lib/analytics";
 
 const NAV = [
-  { label: "Overview",    href: "/admin",             icon: Icons.Grid },
-  { label: "Invoices",    href: "/admin/invoices",    icon: Icons.Invoice },
-  { label: "Customers",   href: "/admin/customers",   icon: Icons.Building },
-  { label: "Engineers",   href: "/admin/engineers",   icon: Icons.Users },
-  { label: "Commercials", href: "/admin/commercials", icon: Icons.Scale },
+  { label: "Overview",      href: "/admin",             icon: Icons.Grid },
+  { label: "Work orders",   href: "/admin/jobs",        icon: Icons.Wrench },
+  { label: "Inbox",         href: "/admin/inbox",       icon: Icons.Inbox },
+  { label: "Billing",       href: "/admin/invoices",    icon: Icons.Invoice },
+  { label: "Pricing rules", href: "/admin/commercials", icon: Icons.Scale },
 ];
 
 const isActive = (pathname: string, href: string) =>
@@ -26,7 +26,7 @@ function Sidebar({ collapsed, onToggle, mobileOpen, onClose }: {
 }) {
   const pathname = usePathname();
   const { tasks } = useStore();
-  const pending = tasks.filter((t) => t.status === "completed").length;
+  const openCount = tasks.filter((t) => !["approved", "cancelled", "rejected"].includes(t.status)).length;
 
   return (
     <>
@@ -47,7 +47,7 @@ function Sidebar({ collapsed, onToggle, mobileOpen, onClose }: {
           </span>
           <div className={cx("min-w-0 leading-tight", collapsed && "lg:hidden")}>
             <p className="truncate text-[13px] font-semibold tracking-tight text-fg">INVEXAL FieldOps</p>
-            <p className="truncate text-2xs text-fg-subtle">Orange Business · PK</p>
+            <p className="truncate text-2xs text-fg-subtle">Orange work order billing</p>
           </div>
         </div>
 
@@ -69,9 +69,9 @@ function Sidebar({ collapsed, onToggle, mobileOpen, onClose }: {
                     {active && <span className="absolute -left-2.5 top-1.5 bottom-1.5 w-[3px] rounded-r bg-brand" />}
                     <Icon size={16} className={active ? "text-brand" : "text-fg-faint group-hover:text-fg-muted"} />
                     <span className={cx(collapsed && "lg:hidden")}>{item.label}</span>
-                    {item.href === "/admin" && pending > 0 && (
+                    {item.href === "/admin/jobs" && openCount > 0 && (
                       <span className={cx("num ml-auto rounded bg-warn/15 px-1.5 text-2xs font-semibold text-[#f0bd6d]", collapsed && "lg:hidden")}
-                        title={`${pending} awaiting approval`}>{pending}</span>
+                        title={`${openCount} open work orders`}>{openCount}</span>
                     )}
                   </Link>
                 </li>
@@ -79,14 +79,6 @@ function Sidebar({ collapsed, onToggle, mobileOpen, onClose }: {
             })}
           </ul>
 
-          <p className={cx("px-2 pb-2 pt-5 text-2xs font-medium uppercase tracking-[0.08em] text-fg-faint", collapsed && "lg:hidden")}>Workspaces</p>
-          <Link href="/fe" title={collapsed ? "FE Portal" : undefined}
-            className={cx("group flex h-8 items-center gap-2.5 rounded-md px-2 text-[13px] font-medium text-fg-subtle transition-colors hover:bg-white/[0.035] hover:text-fg",
-              collapsed && "lg:justify-center lg:px-0")}>
-            <Icons.Wrench size={16} className="text-fg-faint group-hover:text-fg-muted" />
-            <span className={cx(collapsed && "lg:hidden")}>FE Portal</span>
-            <Icons.ArrowUp size={12} className={cx("ml-auto text-fg-faint", collapsed && "lg:hidden")} />
-          </Link>
         </nav>
 
         <div className="hidden border-t border-line p-2.5 lg:block">
@@ -128,10 +120,10 @@ function Popover({ trigger, children }: {
 function TopBar({ onMenu }: { onMenu: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { query, setQuery } = useShell();
+  const { query, setQuery, setJobView } = useShell();
   const { tasks } = useStore();
   const a = attention(tasks);
-  const alerts = a.awaiting.length + a.breached.length + a.rejected.length;
+  const alerts = a.awaitingClosure.length + a.awaiting.length + a.breached.length + a.pricingCheck.length;
   const searchRef = useRef<HTMLInputElement>(null);
 
   const page = NAV.find((n) => isActive(pathname, n.href))?.label ?? "Overview";
@@ -161,10 +153,10 @@ function TopBar({ onMenu }: { onMenu: () => void }) {
       </nav>
 
       <form className="relative ml-auto w-full max-w-[320px] md:ml-6"
-        onSubmit={(e) => { e.preventDefault(); if (pathname !== "/admin") router.push("/admin#tasks"); else document.getElementById("tasks")?.scrollIntoView({ behavior: "smooth" }); }}>
+        onSubmit={(e) => { e.preventDefault(); setJobView("all"); if (pathname !== "/admin/jobs") router.push("/admin/jobs"); }}>
         <Icons.Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-faint" />
         <input ref={searchRef} value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search tasks"
-          placeholder="Search tasks, engineers, sites…"
+          placeholder="Search work orders, customers, sites…"
           className="h-8 w-full rounded-lg bg-white/[0.04] pl-8 pr-8 text-[13px] text-fg placeholder:text-fg-faint ring-1 ring-inset ring-line transition focus:bg-white/[0.06] focus:outline-none focus:ring-brand/60" />
         <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded border border-line-strong px-1.5 text-2xs text-fg-faint sm:block">/</kbd>
       </form>
@@ -181,10 +173,10 @@ function TopBar({ onMenu }: { onMenu: () => void }) {
             <div className="anim-pop absolute right-0 mt-2 w-72 overflow-hidden rounded-xl border border-line-strong bg-raised shadow-2xl">
               <p className="border-b border-line px-4 py-2.5 text-xs font-semibold text-fg">Needs attention</p>
               {[
-                { n: a.awaiting.length, label: "visits awaiting approval", tone: "bg-warn" },
-                { n: a.breached.length, label: "open tasks past SLA", tone: "bg-crit" },
-                { n: a.atRisk.length,   label: "tasks nearing SLA", tone: "bg-warn" },
-                { n: a.rejected.length, label: "rejected tasks to reassign", tone: "bg-crit" },
+                { n: a.breached.length,        label: "engineers late to site", tone: "bg-crit" },
+                { n: a.awaitingClosure.length, label: "visits awaiting Orange closure", tone: "bg-brand" },
+                { n: a.awaiting.length,        label: "cleared visits not billed", tone: "bg-warn" },
+                { n: a.pricingCheck.length,    label: "work orders with pricing to check", tone: "bg-warn" },
               ].map((r) => (
                 <Link key={r.label} href="/admin#attention" onClick={() => close()}
                   className="flex items-center gap-3 px-4 py-2.5 text-[13px] text-fg-muted transition-colors hover:bg-white/[0.04] hover:text-fg">
@@ -210,8 +202,8 @@ function TopBar({ onMenu }: { onMenu: () => void }) {
                 <p className="text-2xs text-fg-subtle">admin@invexal.com · Operations admin</p>
               </div>
               <div className="py-1">
-                <Link href="/admin/commercials" onClick={() => close()} className="flex items-center gap-2.5 px-4 py-2 text-[13px] text-fg-muted hover:bg-white/[0.04] hover:text-fg"><Icons.Scale size={14} />Commercial rules</Link>
-                <Link href="/fe" onClick={() => close()} className="flex items-center gap-2.5 px-4 py-2 text-[13px] text-fg-muted hover:bg-white/[0.04] hover:text-fg"><Icons.Wrench size={14} />Switch to FE Portal</Link>
+                <Link href="/admin/commercials" onClick={() => close()} className="flex items-center gap-2.5 px-4 py-2 text-[13px] text-fg-muted hover:bg-white/[0.04] hover:text-fg"><Icons.Scale size={14} />Pricing rules</Link>
+                <Link href="/admin/inbox" onClick={() => close()} className="flex items-center gap-2.5 px-4 py-2 text-[13px] text-fg-muted hover:bg-white/[0.04] hover:text-fg"><Icons.Inbox size={14} />Email inbox</Link>
               </div>
             </div>
           )}
