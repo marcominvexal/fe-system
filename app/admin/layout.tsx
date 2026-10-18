@@ -8,12 +8,14 @@ import { ShellProvider, useShell } from "@/components/shell";
 import { Icons } from "@/components/icons";
 import { Avatar, cx } from "@/components/ui";
 import { attention } from "@/lib/analytics";
+import { needsReview } from "@/lib/confidence";
 
 const NAV = [
   { label: "Overview",      href: "/admin",             icon: Icons.Grid },
   { label: "Work orders",   href: "/admin/jobs",        icon: Icons.Wrench },
   { label: "Inbox",         href: "/admin/inbox",       icon: Icons.Inbox },
   { label: "Billing",       href: "/admin/invoices",    icon: Icons.Invoice },
+  { label: "Insights",      href: "/admin/insights",    icon: Icons.Sparkle },
   { label: "Pricing rules", href: "/admin/commercials", icon: Icons.Scale },
 ];
 
@@ -27,6 +29,7 @@ function Sidebar({ collapsed, onToggle, mobileOpen, onClose }: {
   const pathname = usePathname();
   const { tasks } = useStore();
   const openCount = tasks.filter((t) => !["approved", "cancelled", "rejected"].includes(t.status)).length;
+  const reviewCount = tasks.filter(needsReview).length;
 
   return (
     <>
@@ -72,6 +75,10 @@ function Sidebar({ collapsed, onToggle, mobileOpen, onClose }: {
                     {item.href === "/admin/jobs" && openCount > 0 && (
                       <span className={cx("num ml-auto rounded bg-warn/15 px-1.5 text-2xs font-semibold text-[#f0bd6d]", collapsed && "lg:hidden")}
                         title={`${openCount} open work orders`}>{openCount}</span>
+                    )}
+                    {item.href === "/admin/insights" && reviewCount > 0 && (
+                      <span className={cx("num ml-auto rounded bg-crit/15 px-1.5 text-2xs font-semibold text-[#f08a84]", collapsed && "lg:hidden")}
+                        title={`${reviewCount} price(s) to review`}>{reviewCount}</span>
                     )}
                   </Link>
                 </li>

@@ -5,8 +5,7 @@
  */
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
-import { join } from "path";
+import { getDb } from "@/lib/db/client";
 import type { IncomingEmail } from "./ingest";
 
 export interface MailConfig {
@@ -14,8 +13,9 @@ export interface MailConfig {
 }
 
 export function mailConfig(): MailConfig | null {
-  const user = process.env.MAIL_USER;
-  const pass = process.env.MAIL_APP_PASSWORD;
+  // GMAIL_* names are accepted as aliases
+  const user = process.env.MAIL_USER || process.env.GMAIL_USER;
+  const pass = process.env.MAIL_APP_PASSWORD || process.env.GMAIL_APP_PASSWORD;
   if (!user || !pass) return null;
   return {
     host: process.env.MAIL_IMAP_HOST || "imap.gmail.com",
@@ -27,28 +27,29 @@ export function mailConfig(): MailConfig | null {
   };
 }
 
-// ── Sync position (UID) — file locally, memory on read-only hosts ────────────
+// ── Sync position (UID), stored in app_state ─────────────────────────────────
 interface SyncState { uidValidity?: string; lastUid?: number; lastRunAt?: string }
-const STATE_PATH = join(process.cwd(), "data", "mail-state.json");
-let memState: SyncState | null = null;
 
-export function readState(): SyncState {
-  if (memState) return memState;
-  try { return existsSync(STATE_PATH) ? JSON.parse(readFileSync(STATE_PATH, "utf-8")) : {}; } catch { return {}; }
+export async function readState(): Promise<SyncState> {
+  const db = await getDb();
+  const [row] = await db.query<{ value: unknown }>("SELECT value FROM app_state WHERE key = 'mail_sync'");
+  if (!row) return {};
+  return (typeof row.value === "string" ? JSON.parse(row.value) : row.value) as SyncState;
 }
-function writeState(s: SyncState) {
-  try {
-    mkdirSync(join(process.cwd(), "data"), { recursive: true });
-    writeFileSync(STATE_PATH, JSON.stringify(s, null, 2));
-  } catch { memState = s; }
+async function writeState(s: SyncState) {
+  const db = await getDb();
+  await db.query(
+    `INSERT INTO app_state (key, value) VALUES ('mail_sync', $1::jsonb) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+    [JSON.stringify(s)],
+  );
 }
 
 /**
  * Remember how far the mailbox has been read. Pass the UID just before the
  * first email that should be retried (AI limit reached, AI off or failed).
  */
-export function saveSyncPosition(validity: string | undefined, lastUid: number) {
-  writeState({ uidValidity: validity, lastUid, lastRunAt: new Date().toISOString() });
+export async function saveSyncPosition(validity: string | undefined, lastUid: number) {
+  await writeState({ uidValidity: validity, lastUid, lastRunAt: new Date().toISOString() });
 }
 
 /** Fetch candidate emails that arrived since the last run (or the lookback window on first run). */
@@ -65,7 +66,7 @@ export async function fetchNewMail(cfg: MailConfig): Promise<{
   try {
     const box = client.mailbox;
     const validity = box && typeof box === "object" ? String(box.uidValidity) : undefined;
-    const state = readState();
+    const state = await readState();
     const fresh = !state.lastUid || state.uidValidity !== validity;
 
     const range = fresh ? {} : { uid: `${state.lastUid! + 1}:*` };

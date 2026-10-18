@@ -9,6 +9,8 @@ import { useStore } from "@/lib/storeContext";
 import { Icons } from "@/components/icons";
 import { Badge, Button, Panel, cx, type Tone } from "@/components/ui";
 import { StageTracker, JobTimeline } from "@/components/workflow";
+import { JobHistory } from "@/components/history";
+import { ConfidenceReasons, RepriceModal, confirmPricing } from "@/components/pricingReview";
 import { CancelModal, Expandable, PricingBasis } from "@/components/tasks";
 import { headline } from "@/lib/workflow";
 import { fmtUSD, taskValue } from "@/lib/analytics";
@@ -30,6 +32,7 @@ export default function JobPage() {
   const { tasks, refresh } = useStore();
   const [cancelling, setCancelling] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [repricing, setRepricing] = useState(false);
   const task = tasks.find((t) => t.id === id);
 
   if (!task) {
@@ -52,6 +55,7 @@ export default function JobPage() {
   const approve = async () => { setApproving(true); await patch({ action: "approve" }); setApproving(false); };
   const cancel = async (_: string, reason: string) => { await patch({ action: "cancel", cancelReason: reason }); };
   const canCancel = !["approved", "cancelled", "completed"].includes(task.status);
+  const canReprice = ["approved", "completed"].includes(task.status) && !task.invoiceId;
 
   return (
     <div>
@@ -73,7 +77,7 @@ export default function JobPage() {
         <div className="text-right">
           <p className="text-2xs font-medium uppercase tracking-[0.07em] text-fg-subtle">{billed ? "Billed" : "Estimated"}</p>
           <p className={cx("num text-[26px] font-semibold leading-tight tracking-tight", billed ? "text-fg" : "text-fg-muted")}>{fmtUSD(value)}</p>
-          {task.invoiceNumber && <p className="font-mono text-2xs text-fg-subtle">{task.invoiceNumber}</p>}
+          {task.invoiceId && <Link href={`/admin/invoices/${task.invoiceId}`} className="font-mono text-2xs text-brand-soft hover:text-brand">On invoice {task.invoiceNumber}</Link>}
         </div>
       </div>
 
@@ -83,9 +87,14 @@ export default function JobPage() {
       </section>
 
       <div className="grid gap-4 lg:grid-cols-12">
-        <Panel className="lg:col-span-7" title="What happened" subtitle="Orange's emails and the engineer's on-site times, in order">
-          <JobTimeline task={task} />
-        </Panel>
+        <div className="min-w-0 space-y-4 lg:col-span-7">
+          <Panel title="What happened" subtitle="Orange's emails and the engineer's on-site times, in order">
+            <JobTimeline task={task} />
+          </Panel>
+          <Panel title="Change history" subtitle="Every change to this work order, who or what made it, and why">
+            <JobHistory taskId={task.id} version={JSON.stringify([task.status, task.emailLog?.length, task.customerChargeUSD, task.cancelledAt])} />
+          </Panel>
+        </div>
 
         <div className="min-w-0 space-y-4 lg:col-span-5">
           <Panel title="Billing" subtitle={billed ? "Locked when Orange cleared the visit" : "Calculated from the pricing rules; final on closure"}>
@@ -103,6 +112,17 @@ export default function JobPage() {
             </div>
             <p className="mt-2 text-xs text-fg-subtle">{task.maintenanceLevel} · {task.serviceLevel} · {task.distanceBand} · {task.visitDuration}</p>
             {task.pricingBasis?.length ? <div className="mt-4"><PricingBasis lines={task.pricingBasis} /></div> : null}
+            {["approved", "completed"].includes(task.status) && <div className="mt-4 border-t border-line pt-4"><ConfidenceReasons task={task} /></div>}
+            {canReprice && (
+              <div className="mt-4 flex gap-2">
+                {!task.pricingReviewed && (
+                  <Button className="flex-1" onClick={async () => { if (await confirmPricing(task.id, "Confirmed on the job page")) refresh(); }}>
+                    <Icons.Check size={14} />Price is right
+                  </Button>
+                )}
+                <Button className="flex-1" onClick={() => setRepricing(true)}><Icons.Edit size={14} />Adjust pricing</Button>
+              </div>
+            )}
             {(task.status === "completed" || canCancel) && (
               <div className="mt-4 flex gap-2 border-t border-line pt-4">
                 {task.status === "completed" && (
@@ -141,6 +161,7 @@ export default function JobPage() {
         </div>
       </div>
 
+      {repricing && <RepriceModal task={task} onClose={() => setRepricing(false)} onDone={() => { setRepricing(false); refresh(); }} />}
       {cancelling && <CancelModal task={task as Task} onCancel={cancel} onClose={() => setCancelling(false)} />}
     </div>
   );

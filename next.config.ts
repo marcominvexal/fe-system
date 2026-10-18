@@ -1,9 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Ship the JSON data file with the API routes so hosted builds have data
+  // PGlite ships WebAssembly and data files; load it from node_modules as-is
+  serverExternalPackages: ["@electric-sql/pglite"],
+  // Ship the legacy JSON data with the API routes so a fresh database can import it
   outputFileTracingIncludes: {
-    "/api/tasks": ["./data/**/*"],
+    "/api/**/*": ["./data/*.json"],
   },
 };
 

@@ -1,26 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readDb, writeDb } from "@/lib/db";
+import { listTasks, getTask, saveTask, deleteTask, highestTaskNumber } from "@/lib/repo";
+import { loadPricing } from "@/lib/settings";
 import { buildRuleKey, calculateCommercial } from "@/lib/commercialEngine";
-import { calcDuration, generateInvoiceNumber } from "@/lib/store";
+import { calcDuration } from "@/lib/store";
 import type { Task, TaskStatus } from "@/lib/store";
 
 // ── GET /api/tasks ─────────────────────────────────────────────────────────────
 export async function GET() {
-  return NextResponse.json(readDb());
+  return NextResponse.json(await listTasks());
 }
 
 // ── POST /api/tasks — create new task ─────────────────────────────────────────
 export async function POST(req: NextRequest) {
+  await loadPricing();
   const body = await req.json() as Omit<
     Task,
     "id" | "status" | "createdAt" | "ruleKey" | "approved"
   >;
 
-  const tasks = readDb();
+  const tasks = await listTasks();
   const nums  = tasks
     .map((t) => parseInt(t.id.replace("T-", ""), 10))
     .filter((n) => !isNaN(n));
-  const max  = nums.length > 0 ? Math.max(...nums) : 0;
+  const max  = Math.max(await highestTaskNumber(), ...nums, 0);
   const id   = `T-${String(max + 1).padStart(3, "0")}`;
 
   const ruleKey = buildRuleKey(
@@ -39,8 +41,7 @@ export async function POST(req: NextRequest) {
     createdAt: new Date().toISOString(),
   };
 
-  tasks.push(task);
-  writeDb(tasks);
+  await saveTask(task, "admin", "Created in the portal", null);
   return NextResponse.json(task, { status: 201 });
 }
 
@@ -56,6 +57,7 @@ export async function POST(req: NextRequest) {
 //   (any other partial Task fields = generic edit)
 
 export async function PATCH(req: NextRequest) {
+  await loadPricing();
   const body = await req.json() as {
     id: string;
     action?: string;
@@ -63,6 +65,7 @@ export async function PATCH(req: NextRequest) {
     cancelReason?: string;
     comments?: string;
     aiSummary?: string;
+    note?: string;
   } & Partial<Task>;
 
   const { id, action, ...rest } = body;
@@ -71,21 +74,18 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "id is required" }, { status: 400 });
   }
 
-  const tasks = readDb();
-  const idx   = tasks.findIndex((t) => t.id === id);
-
-  if (idx === -1) {
+  const t = await getTask(id);
+  if (!t) {
     return NextResponse.json({ error: `Task ${id} not found` }, { status: 404 });
   }
-
-  const t = tasks[idx];
+  let next: Task = t;
 
   switch (action) {
     case "accept": {
       if (t.status !== "assigned") {
         return NextResponse.json({ error: "Task must be assigned to accept" }, { status: 400 });
       }
-      tasks[idx] = { ...t, status: "accepted", acceptedAt: new Date().toISOString() };
+      next = { ...t, status: "accepted", acceptedAt: new Date().toISOString() };
       break;
     }
 
@@ -93,7 +93,7 @@ export async function PATCH(req: NextRequest) {
       if (t.status !== "assigned") {
         return NextResponse.json({ error: "Task must be assigned to reject" }, { status: 400 });
       }
-      tasks[idx] = {
+      next = {
         ...t,
         status:           "rejected",
         rejectedAt:       new Date().toISOString(),
@@ -106,7 +106,7 @@ export async function PATCH(req: NextRequest) {
       if (!["assigned", "accepted"].includes(t.status)) {
         return NextResponse.json({ error: "Task must be assigned or accepted to start" }, { status: 400 });
       }
-      tasks[idx] = {
+      next = {
         ...t,
         status:      "in_progress",
         checkInTime: new Date().toISOString(),
@@ -121,7 +121,7 @@ export async function PATCH(req: NextRequest) {
       }
       const checkOutTime = new Date().toISOString();
       const duration     = calcDuration(t.checkInTime, checkOutTime);
-      tasks[idx] = {
+      next = {
         ...t,
         status:       "completed",
         checkOutTime,
@@ -142,11 +142,10 @@ export async function PATCH(req: NextRequest) {
         t.distanceBand,
         t.visitDuration
       );
-      tasks[idx] = {
+      next = {
         ...t,
         status:            "approved",
         approved:          true,
-        invoiceNumber:     generateInvoiceNumber(),
         customerChargeUSD: rates.customerChargeUSD,
         engineerPaymentUSD: rates.engineerPaymentUSD,
         profit:            rates.profit,
@@ -158,7 +157,7 @@ export async function PATCH(req: NextRequest) {
       if (["approved", "cancelled"].includes(t.status)) {
         return NextResponse.json({ error: "Cannot cancel an approved or already cancelled task" }, { status: 400 });
       }
-      tasks[idx] = {
+      next = {
         ...t,
         status:      "cancelled",
         cancelledAt: new Date().toISOString(),
@@ -167,11 +166,63 @@ export async function PATCH(req: NextRequest) {
       break;
     }
 
+    case "confirm_pricing": {
+      if (t.invoiceId) {
+        return NextResponse.json({ error: "This visit is already on an invoice." }, { status: 400 });
+      }
+      next = { ...t, pricingReviewed: { by: "Admin", at: new Date().toISOString(), note: rest.note } };
+      break;
+    }
+
+    case "reprice": {
+      // Correct the pricing inputs of a cleared or billed visit before it is invoiced
+      if (!["approved", "completed"].includes(t.status)) {
+        return NextResponse.json({ error: "Only cleared or billed visits can be re-priced." }, { status: 400 });
+      }
+      if (t.invoiceId) {
+        return NextResponse.json({ error: "This visit is already on an invoice. Adjust the invoice or issue a credit note instead." }, { status: 400 });
+      }
+      if (!rest.note?.trim()) {
+        return NextResponse.json({ error: "Give a reason for the price change." }, { status: 400 });
+      }
+      const maintenanceLevel = rest.maintenanceLevel ?? t.maintenanceLevel;
+      const serviceLevel     = rest.serviceLevel     ?? t.serviceLevel;
+      const distanceBand     = rest.distanceBand     ?? t.distanceBand;
+      const visitDuration    = rest.visitDuration    ?? t.visitDuration;
+      const rates = calculateCommercial(maintenanceLevel, serviceLevel, distanceBand, visitDuration);
+      next = {
+        ...t,
+        maintenanceLevel, serviceLevel, distanceBand, visitDuration,
+        ruleKey: buildRuleKey(maintenanceLevel, serviceLevel, distanceBand, visitDuration),
+        ...(t.status === "approved" ? {
+          customerChargeUSD:  rates.customerChargeUSD,
+          engineerPaymentUSD: rates.engineerPaymentUSD,
+          profit:             rates.profit,
+        } : {}),
+        // Drop the automatic reasons this adjustment overrides, and say what changed
+        pricingBasis: [
+          ...(t.pricingBasis ?? []).filter((b) =>
+            !b.startsWith("Adjusted by") &&
+            !(distanceBand !== t.distanceBand && b.startsWith("Distance ")) &&
+            !(visitDuration !== t.visitDuration && b.startsWith("Visit ")) &&
+            !((maintenanceLevel !== t.maintenanceLevel || serviceLevel !== t.serviceLevel) && /^(Planned|Reactive) /.test(b))),
+          `Adjusted by Admin — ${rest.note.trim()}${[
+            maintenanceLevel !== t.maintenanceLevel && `${t.maintenanceLevel} → ${maintenanceLevel}`,
+            serviceLevel !== t.serviceLevel && `${t.serviceLevel} → ${serviceLevel}`,
+            distanceBand !== t.distanceBand && `${t.distanceBand} → ${distanceBand}`,
+            visitDuration !== t.visitDuration && `${t.visitDuration} → ${visitDuration}`,
+          ].filter(Boolean).map((x) => ` (${x})`).join("")}`,
+        ],
+        pricingReviewed: { by: "Admin", at: new Date().toISOString(), note: rest.note.trim() },
+      };
+      break;
+    }
+
     case "reassign": {
       if (!["rejected", "cancelled", "assigned"].includes(t.status)) {
         return NextResponse.json({ error: "Can only reassign rejected, cancelled, or assigned tasks" }, { status: 400 });
       }
-      tasks[idx] = {
+      next = {
         ...t,
         status:       "assigned",
         engineerId:   rest.engineerId   ?? t.engineerId,
@@ -189,13 +240,14 @@ export async function PATCH(req: NextRequest) {
       // Generic partial edit (title, description, location, etc.)
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { action: _a, ...fields } = body;
-      tasks[idx] = { ...t, ...fields };
+      next = { ...t, ...fields };
       break;
     }
   }
 
-  writeDb(tasks);
-  return NextResponse.json(tasks[idx]);
+  const why = rest.cancelReason || rest.rejectionReason || rest.note;
+  await saveTask(next, "admin", action ? `Portal action: ${action}${why ? ` — ${why}` : ""}` : "Edited in the portal", t);
+  return NextResponse.json(next);
 }
 
 // ── DELETE /api/tasks?id=T-001 ────────────────────────────────────────────────
@@ -207,13 +259,8 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "id query param is required" }, { status: 400 });
   }
 
-  const tasks   = readDb();
-  const updated = tasks.filter((t) => t.id !== id);
-
-  if (updated.length === tasks.length) {
+  if (!(await deleteTask(id, "admin", "Deleted in the portal"))) {
     return NextResponse.json({ error: `Task ${id} not found` }, { status: 404 });
   }
-
-  writeDb(updated);
   return NextResponse.json({ deleted: id });
 }

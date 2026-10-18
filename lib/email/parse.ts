@@ -192,6 +192,14 @@ export function parseEmail(subject: string, body: string): ParsedEmail | null {
   };
 }
 
+/** Status notifications that mean the visit is finished. Others (e.g. "Dispatch Rescheduled") are updates. */
+export const isClosureStatus = (status: string) => /cleared|closed|completed|resolved/i.test(status);
+
+/** Orange status from a "Work Order No:… Status:…" subject, if any. */
+export function statusFromSubject(subject: string): string | undefined {
+  return subject.replace(/\s+/g, " ").match(/Status\s*:\s*([A-Za-z ]+?)\s*(?:,|$)/i)?.[1]?.trim();
+}
+
 /** Billable visit length from minutes on site (arrive → leave). */
 export function visitBand(minutes: number): "2h" | "Half Day" | "Full Day" {
   if (minutes <= 150) return "2h";

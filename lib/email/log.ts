@@ -1,12 +1,11 @@
 /**
  * /lib/email/log.ts — Server-side only. Keeps a record of every email the
- * automation has looked at (including ignored ones) and of each sync run,
- * in data/mail-log.json (memory fallback on read-only hosts).
+ * automation has looked at (including ignored ones) and of each sync run.
+ * Stored in Postgres (mail_log, sync_runs).
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
-import { join } from "path";
 import type { EmailKind } from "@/lib/store";
-import { classify } from "./parse";
+import { getDb } from "@/lib/db/client";
+import { classify, isClosureStatus, statusFromSubject } from "./parse";
 import type { IncomingEmail, IngestOutcome } from "./ingest";
 
 export type MailOutcome = "created" | "updated" | "duplicate" | "ignored";
@@ -39,46 +38,42 @@ export interface SyncRun {
   error?:     string;
 }
 
-interface MailLog { entries: MailLogEntry[]; runs: SyncRun[] }
+const parse = <T,>(v: unknown): T => (typeof v === "string" ? JSON.parse(v) : v) as T;
 
-const PATH = join(process.cwd(), "data", "mail-log.json");
-const MAX_ENTRIES = 2000;
-const MAX_RUNS = 50;
-let memory: MailLog | null = null;
-
-export function readMailLog(): MailLog {
-  if (memory) return memory;
-  try {
-    if (existsSync(PATH)) {
-      const raw = JSON.parse(readFileSync(PATH, "utf-8")) as Partial<MailLog>;
-      return { entries: raw.entries ?? [], runs: raw.runs ?? [] };
-    }
-  } catch { /* fall through */ }
-  return { entries: [], runs: [] };
+export async function readMailLog(limit = 2000): Promise<{ entries: MailLogEntry[]; runs: SyncRun[] }> {
+  const db = await getDb();
+  const entries = await db.query<{ data: unknown }>("SELECT data FROM mail_log ORDER BY date DESC LIMIT $1", [limit]);
+  const runs = await db.query<{ data: unknown }>("SELECT data FROM sync_runs ORDER BY at DESC, id DESC LIMIT 50");
+  return { entries: entries.map((r) => parse<MailLogEntry>(r.data)), runs: runs.map((r) => parse<SyncRun>(r.data)) };
 }
 
-function write(log: MailLog) {
-  const trimmed = { entries: log.entries.slice(0, MAX_ENTRIES), runs: log.runs.slice(0, MAX_RUNS) };
-  try {
-    mkdirSync(join(process.cwd(), "data"), { recursive: true });
-    writeFileSync(PATH, JSON.stringify(trimmed, null, 2), "utf-8");
-  } catch {
-    memory = trimmed;
-  }
+async function upsertEntry(e: MailLogEntry) {
+  const db = await getDb();
+  await db.query(
+    `INSERT INTO mail_log (message_id, date, outcome, work_order, task_id, data) VALUES ($1,$2,$3,$4,$5,$6::jsonb)
+     ON CONFLICT (message_id) DO UPDATE SET outcome = EXCLUDED.outcome, work_order = EXCLUDED.work_order,
+       task_id = EXCLUDED.task_id, data = EXCLUDED.data`,
+    [e.messageId, e.date, e.outcome, e.workOrder ?? null, e.taskId ?? null, JSON.stringify(e)],
+  );
+}
+
+async function addRun(run: SyncRun) {
+  const db = await getDb();
+  await db.query("INSERT INTO sync_runs (at, data) VALUES ($1, $2::jsonb)", [run.at, JSON.stringify(run)]);
 }
 
 /** Record what happened to each email and append one run summary. */
-export function recordBatch(
+export async function recordBatch(
   source: "sync" | "import",
   results: { mail: IncomingEmail; outcome: IngestOutcome }[],
   scanned = results.length,
 ) {
-  const log = readMailLog();
+  const db = await getDb();
   const now = new Date().toISOString();
-  const byId = new Map(log.entries.map((e) => [e.messageId, e]));
 
   for (const { mail, outcome } of results) {
-    const existing = byId.get(mail.messageId);
+    const [row] = await db.query<{ data: unknown }>("SELECT data FROM mail_log WHERE message_id = $1", [mail.messageId]);
+    const existing = row ? parse<MailLogEntry>(row.data) : null;
     if (existing) {
       existing.lastSeenAt = now;
       existing.seenCount += 1;
@@ -92,10 +87,11 @@ export function recordBatch(
       } else if (existing.outcome === "ignored" && outcome.status === "ignored") {
         existing.reason = outcome.reason;
       }
+      await upsertEntry(existing);
       continue;
     }
     const c = classify(mail.subject);
-    const entry: MailLogEntry = {
+    await upsertEntry({
       messageId: mail.messageId,
       subject:   mail.subject,
       from:      mail.from,
@@ -104,29 +100,25 @@ export function recordBatch(
       processedAt: now,
       lastSeenAt:  now,
       seenCount:   1,
-      kind:      "viaAi" in outcome && outcome.viaAi ? "update" : c?.kind ?? null,
+      kind:      "viaAi" in outcome && outcome.viaAi ? "update"
+               : c?.kind === "cleared" && !isClosureStatus(statusFromSubject(mail.subject) ?? "") ? "update"
+               : c?.kind ?? null,
       viaAi:     "viaAi" in outcome && outcome.viaAi ? true : undefined,
       workOrder: "workOrder" in outcome ? outcome.workOrder : c?.workOrder,
       outcome:   outcome.status,
       reason:    outcome.status === "ignored" ? outcome.reason : outcome.status === "duplicate" ? "Already applied to this job" : undefined,
       taskId:    "taskId" in outcome ? outcome.taskId : undefined,
-    };
-    log.entries.unshift(entry);
-    byId.set(entry.messageId, entry);
+    });
   }
-  log.entries.sort((a, b) => b.date.localeCompare(a.date));
 
   const count = (s: string) => results.filter((r) => r.outcome.status === s).length;
-  log.runs.unshift({
+  await addRun({
     at: now, source, scanned,
     created: count("created"), updated: count("updated"),
     duplicates: count("duplicate"), ignored: count("ignored"),
   });
-  write(log);
 }
 
-export function recordFailedRun(source: "sync" | "import", error: string) {
-  const log = readMailLog();
-  log.runs.unshift({ at: new Date().toISOString(), source, scanned: 0, created: 0, updated: 0, duplicates: 0, ignored: 0, error });
-  write(log);
+export async function recordFailedRun(source: "sync" | "import", error: string) {
+  await addRun({ at: new Date().toISOString(), source, scanned: 0, created: 0, updated: 0, duplicates: 0, ignored: 0, error });
 }

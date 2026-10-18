@@ -13,6 +13,7 @@ import { PriorityTag } from "@/components/tasks";
 import { MailBanner, MailButtons, useMailActions } from "@/components/mail";
 import { StageTracker } from "@/components/workflow";
 import { headline, stages, timeline, type EventKind } from "@/lib/workflow";
+import { needsReview } from "@/lib/confidence";
 import {
   TARGETS, RANGE_DAYS, type RangeKey, summarize, pctChange, pipeline, attention,
   slaByTier, OPEN_STATUSES, fmtUSD, fmtPct, fmtHrs, timeAgo,
@@ -111,6 +112,7 @@ export default function OverviewPage() {
   const margin = s.revenue > 0 ? s.profit / s.revenue : null;
   const slaTone: Tone = s.slaCompliance == null ? "muted" : s.slaCompliance >= TARGETS.slaCompliance ? "ok" : s.slaCompliance >= TARGETS.slaCompliance - 0.1 ? "warn" : "crit";
   const late = open.filter((t) => stages(t).some((x) => x.state === "late")).length;
+  const reviewCount = tasks.filter(needsReview).length;
 
   // Latest workflow events across all work orders
   const feed = useMemo(() => tasks
@@ -160,9 +162,9 @@ export default function OverviewPage() {
           <AttentionItem tone="warn" count={att.awaiting.length} title="Cleared, not billed"
             detail={att.awaiting.length ? `${fmtUSD(att.awaitingValue)} ready to bill` : "Everything cleared is billed"}
             action="Bill" onClick={() => goJobs("cleared")} />
-          <AttentionItem tone="warn" count={att.pricingCheck.length} title="Pricing to check"
-            detail={att.pricingCheck.length ? "Priced with a default rule" : "All pricing matched a rule"}
-            action="Review" onClick={() => goJobs("pricing")} />
+          <AttentionItem tone="warn" count={reviewCount} title="Prices to review"
+            detail={reviewCount ? "Low confidence, check before invoicing" : "Every billed price is confident"}
+            action="Review" onClick={() => router.push("/admin/insights")} />
         </div>
       </section>
 

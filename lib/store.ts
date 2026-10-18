@@ -70,6 +70,9 @@ export interface Task {
   openedAt?:           string;          // when Orange opened the work order, ISO
   asp?:                string;          // Orange's partner code, e.g. "ASP_PK Exponentia1"
   pricingBasis?:       string[];        // why each pricing input was chosen (automatic jobs)
+  invoiceId?:          string;          // monthly invoice this billed visit is on
+  payoutId?:           string;          // partner payout this visit is on
+  pricingReviewed?:    { by: string; at: string; note?: string };  // a person confirmed or adjusted the price
   assignedBy?:         string;          // Orange dispatcher name
   siteContact?:        string;          // on-site contact as written in the dispatch
   onSiteTimes?:        OnSiteTimes;     // from the "Cleared" notification
