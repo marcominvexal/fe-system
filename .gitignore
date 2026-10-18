@@ -41,3 +41,8 @@ data/mail-state.json
 
 # Embedded Postgres used when DATABASE_URL is not set
 data/pglite/
+
+# Agent skill files added by the Vercel/Neon CLI
+.agents/
+.claude/
+skills-lock.json
