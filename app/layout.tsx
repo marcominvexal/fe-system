@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
-import { Geist } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
 const geist = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
+const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "FE Management System",
@@ -15,11 +16,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${geist.variable} h-full`}>
-      <body
-        className="h-full antialiased"
-        style={{ fontFamily: "var(--font-geist-sans), sans-serif" }}
-      >
+    <html lang="en" className={`${geist.variable} ${geistMono.variable} h-full`}>
+      <body className="h-full antialiased">
         {children}
       </body>
     </html>

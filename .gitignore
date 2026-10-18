@@ -32,3 +32,5 @@ tsconfig.tsbuildinfo
 
 # Legacy files (superseded by /app/api/tasks)
 lib/data.ts
+.vercel
+.env*

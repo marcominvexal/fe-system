@@ -1,164 +1,259 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { StoreProvider } from "@/lib/storeContext";
-
-// ── Icons ──────────────────────────────────────────────────────────────────────
-const DashboardIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-    <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
-  </svg>
-);
-const InvoiceIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-    <polyline points="14 2 14 8 20 8"/>
-    <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
-  </svg>
-);
-const CustomerIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-    <polyline points="9 22 9 12 15 12 15 22"/>
-  </svg>
-);
-const EngineerIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-    <circle cx="9" cy="7" r="4"/>
-    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-  </svg>
-);
-const CommercialIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="12" y1="1" x2="12" y2="23"/>
-    <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-  </svg>
-);
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { StoreProvider, useStore } from "@/lib/storeContext";
+import { ShellProvider, useShell } from "@/components/shell";
+import { Icons } from "@/components/icons";
+import { Avatar, cx } from "@/components/ui";
+import { attention } from "@/lib/analytics";
 
 const NAV = [
-  { label: "Dashboard",   href: "/admin",             icon: <DashboardIcon /> },
-  { label: "Invoices",    href: "/admin/invoices",     icon: <InvoiceIcon /> },
-  { label: "Customers",   href: "/admin/customers",    icon: <CustomerIcon /> },
-  { label: "Engineers",   href: "/admin/engineers",    icon: <EngineerIcon /> },
-  { label: "Commercials", href: "/admin/commercials",  icon: <CommercialIcon /> },
+  { label: "Overview",    href: "/admin",             icon: Icons.Grid },
+  { label: "Invoices",    href: "/admin/invoices",    icon: Icons.Invoice },
+  { label: "Customers",   href: "/admin/customers",   icon: Icons.Building },
+  { label: "Engineers",   href: "/admin/engineers",   icon: Icons.Users },
+  { label: "Commercials", href: "/admin/commercials", icon: Icons.Scale },
 ];
 
-function av(name: string) {
-  return name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
-}
+const isActive = (pathname: string, href: string) =>
+  href === "/admin" ? pathname === href : pathname.startsWith(href);
 
-function Sidebar() {
+// ── Sidebar ────────────────────────────────────────────────────────────────────
+function Sidebar({ collapsed, onToggle, mobileOpen, onClose }: {
+  collapsed: boolean; onToggle: () => void; mobileOpen: boolean; onClose: () => void;
+}) {
   const pathname = usePathname();
+  const { tasks } = useStore();
+  const pending = tasks.filter((t) => t.status === "completed").length;
 
   return (
-    <aside className="w-60 bg-white border-r border-gray-200 flex flex-col shrink-0 fixed inset-y-0 left-0 z-20">
-      {/* Logo */}
-      <div className="h-16 flex items-center gap-3 px-5 border-b border-gray-200">
-        <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center shrink-0">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-          </svg>
-        </div>
-        <div className="leading-tight">
-          <p className="text-sm font-bold text-gray-900 tracking-tight">Admin Portal</p>
-          <p className="text-xs text-gray-400">INVEXAL Operations</p>
-        </div>
-      </div>
-
-      {/* Section label */}
-      <div className="px-5 pt-5 pb-2">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Main Menu</p>
-      </div>
-
-      {/* Nav */}
-      <nav className="flex-1 px-3 space-y-0.5">
-        {NAV.map((item) => {
-          const exact  = item.href === "/admin";
-          const active = exact ? pathname === item.href : pathname.startsWith(item.href);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${
-                active
-                  ? "bg-orange-50 text-orange-700"
-                  : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-              }`}
-            >
-              <span className={active ? "text-orange-500" : "text-gray-400"}>{item.icon}</span>
-              {item.label}
-              {active && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-orange-500" />}
-            </Link>
-          );
-        })}
-      </nav>
-
-      {/* FE Portal link */}
-      <div className="px-3 pb-3">
-        <Link
-          href="/fe"
-          className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors border border-gray-200 border-dashed"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400">
-            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
-          </svg>
-          FE Portal →
-        </Link>
-      </div>
-
-      {/* User */}
-      <div className="px-5 py-4 border-t border-gray-200">
-        <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-full bg-orange-100 flex items-center justify-center text-xs font-bold text-orange-600">
-            {av("Admin User")}
-          </div>
-          <div className="leading-tight">
-            <p className="text-xs font-semibold text-gray-700">Admin User</p>
-            <p className="text-xs text-gray-400">admin@invexal.com</p>
+    <>
+      {mobileOpen && <div className="anim-fade fixed inset-0 z-30 bg-black/60 lg:hidden" onClick={onClose} />}
+      <aside
+        className={cx(
+          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-line bg-[#0b0b0c] transition-[width,transform] duration-200 ease-out",
+          collapsed ? "lg:w-[60px]" : "lg:w-[232px]",
+          "w-[248px]",
+          mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
+        )}
+        aria-label="Primary"
+      >
+        {/* Brand */}
+        <div className={cx("flex h-14 items-center gap-2.5 border-b border-line", collapsed ? "lg:justify-center lg:px-0 px-4" : "px-4")}>
+          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-gradient-to-b from-brand-soft to-brand-strong text-[#1a0d03] shadow-[inset_0_1px_0_rgb(255_255_255/0.3)]">
+            <Icons.Bolt size={15} />
+          </span>
+          <div className={cx("min-w-0 leading-tight", collapsed && "lg:hidden")}>
+            <p className="truncate text-[13px] font-semibold tracking-tight text-fg">INVEXAL FieldOps</p>
+            <p className="truncate text-2xs text-fg-subtle">Orange Business · PK</p>
           </div>
         </div>
-      </div>
-    </aside>
+
+        <nav className="scroll-thin flex-1 overflow-y-auto px-2.5 py-3">
+          <p className={cx("px-2 pb-2 text-2xs font-medium uppercase tracking-[0.08em] text-fg-faint", collapsed && "lg:hidden")}>Operations</p>
+          <ul className="space-y-0.5">
+            {NAV.map((item) => {
+              const active = isActive(pathname, item.href);
+              const Icon = item.icon;
+              return (
+                <li key={item.href}>
+                  <Link href={item.href} onClick={onClose} title={collapsed ? item.label : undefined}
+                    aria-current={active ? "page" : undefined}
+                    className={cx(
+                      "group relative flex h-8 items-center gap-2.5 rounded-md px-2 text-[13px] font-medium transition-colors duration-150",
+                      collapsed && "lg:justify-center lg:px-0",
+                      active ? "bg-white/[0.06] text-fg" : "text-fg-subtle hover:bg-white/[0.035] hover:text-fg",
+                    )}>
+                    {active && <span className="absolute -left-2.5 top-1.5 bottom-1.5 w-[3px] rounded-r bg-brand" />}
+                    <Icon size={16} className={active ? "text-brand" : "text-fg-faint group-hover:text-fg-muted"} />
+                    <span className={cx(collapsed && "lg:hidden")}>{item.label}</span>
+                    {item.href === "/admin" && pending > 0 && (
+                      <span className={cx("num ml-auto rounded bg-warn/15 px-1.5 text-2xs font-semibold text-[#f0bd6d]", collapsed && "lg:hidden")}
+                        title={`${pending} awaiting approval`}>{pending}</span>
+                    )}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+
+          <p className={cx("px-2 pb-2 pt-5 text-2xs font-medium uppercase tracking-[0.08em] text-fg-faint", collapsed && "lg:hidden")}>Workspaces</p>
+          <Link href="/fe" title={collapsed ? "FE Portal" : undefined}
+            className={cx("group flex h-8 items-center gap-2.5 rounded-md px-2 text-[13px] font-medium text-fg-subtle transition-colors hover:bg-white/[0.035] hover:text-fg",
+              collapsed && "lg:justify-center lg:px-0")}>
+            <Icons.Wrench size={16} className="text-fg-faint group-hover:text-fg-muted" />
+            <span className={cx(collapsed && "lg:hidden")}>FE Portal</span>
+            <Icons.ArrowUp size={12} className={cx("ml-auto text-fg-faint", collapsed && "lg:hidden")} />
+          </Link>
+        </nav>
+
+        <div className="hidden border-t border-line p-2.5 lg:block">
+          <button onClick={onToggle} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            className={cx("flex h-8 w-full items-center gap-2.5 rounded-md px-2 text-xs text-fg-subtle transition-colors hover:bg-white/[0.035] hover:text-fg", collapsed && "justify-center px-0")}>
+            <Icons.Panel size={16} />
+            {!collapsed && "Collapse"}
+          </button>
+        </div>
+      </aside>
+    </>
   );
 }
 
-function TopBar() {
+// ── Popover ────────────────────────────────────────────────────────────────────
+function Popover({ trigger, children }: {
+  trigger: (open: boolean, toggle: () => void) => React.ReactNode;
+  children: (close: () => void) => React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const k = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", h);
+    document.addEventListener("keydown", k);
+    return () => { document.removeEventListener("mousedown", h); document.removeEventListener("keydown", k); };
+  }, [open]);
   return (
-    <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 shrink-0 sticky top-0 z-10">
-      <div>
-        <p className="text-sm font-semibold text-gray-800">Field Engineer Management &amp; Billing</p>
-        <p className="text-xs text-gray-400">Orange Business Pakistan — NOC Operations</p>
-      </div>
-      <div className="flex items-center gap-3">
-        <span className="text-xs text-gray-400">
-          {new Date().toLocaleDateString("en-GB", {
-            weekday: "short", day: "numeric", month: "short", year: "numeric",
-          })}
-        </span>
-        <div className="w-px h-4 bg-gray-200" />
-        <span className="inline-flex items-center gap-1.5 bg-green-50 text-green-700 text-xs font-medium px-2.5 py-1 rounded-full">
-          <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-          Live
-        </span>
+    <div ref={ref} className="relative">
+      {trigger(open, () => setOpen((o) => !o))}
+      {open && children(() => setOpen(false))}
+    </div>
+  );
+}
+
+// ── Top bar ────────────────────────────────────────────────────────────────────
+function TopBar({ onMenu }: { onMenu: () => void }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const { query, setQuery } = useShell();
+  const { tasks } = useStore();
+  const a = attention(tasks);
+  const alerts = a.awaiting.length + a.breached.length + a.rejected.length;
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  const page = NAV.find((n) => isActive(pathname, n.href))?.label ?? "Overview";
+
+  // "/" focuses search, like most ops consoles
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement;
+      if (e.key === "/" && !["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName)) {
+        e.preventDefault(); searchRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, []);
+
+  return (
+    <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-line bg-canvas/85 px-4 backdrop-blur-md sm:px-6">
+      <button onClick={onMenu} aria-label="Open navigation" className="-ml-1 grid h-8 w-8 place-items-center rounded-md text-fg-muted hover:bg-white/5 lg:hidden">
+        <Icons.Menu size={18} />
+      </button>
+
+      <nav aria-label="Breadcrumb" className="hidden min-w-0 items-center gap-1.5 text-[13px] md:flex">
+        <span className="text-fg-subtle">Operations</span>
+        <Icons.ChevronR size={12} className="text-fg-faint" />
+        <span className="truncate font-medium text-fg">{page}</span>
+      </nav>
+
+      <form className="relative ml-auto w-full max-w-[320px] md:ml-6"
+        onSubmit={(e) => { e.preventDefault(); if (pathname !== "/admin") router.push("/admin#tasks"); else document.getElementById("tasks")?.scrollIntoView({ behavior: "smooth" }); }}>
+        <Icons.Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-faint" />
+        <input ref={searchRef} value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search tasks"
+          placeholder="Search tasks, engineers, sites…"
+          className="h-8 w-full rounded-lg bg-white/[0.04] pl-8 pr-8 text-[13px] text-fg placeholder:text-fg-faint ring-1 ring-inset ring-line transition focus:bg-white/[0.06] focus:outline-none focus:ring-brand/60" />
+        <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded border border-line-strong px-1.5 text-2xs text-fg-faint sm:block">/</kbd>
+      </form>
+
+      <div className="ml-auto flex shrink-0 items-center gap-2 md:ml-0">
+        <Popover trigger={(open, toggle) => (
+          <button onClick={toggle} aria-label={`Alerts (${alerts})`} aria-expanded={open}
+            className="relative grid h-8 w-8 place-items-center rounded-lg text-fg-muted ring-1 ring-inset ring-line transition-colors hover:bg-white/5 hover:text-fg">
+            <Icons.Bell size={16} />
+            {alerts > 0 && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-brand ring-2 ring-canvas" />}
+          </button>
+        )}>
+          {(close) => (
+            <div className="anim-pop absolute right-0 mt-2 w-72 overflow-hidden rounded-xl border border-line-strong bg-raised shadow-2xl">
+              <p className="border-b border-line px-4 py-2.5 text-xs font-semibold text-fg">Needs attention</p>
+              {[
+                { n: a.awaiting.length, label: "visits awaiting approval", tone: "bg-warn" },
+                { n: a.breached.length, label: "open tasks past SLA", tone: "bg-crit" },
+                { n: a.atRisk.length,   label: "tasks nearing SLA", tone: "bg-warn" },
+                { n: a.rejected.length, label: "rejected tasks to reassign", tone: "bg-crit" },
+              ].map((r) => (
+                <Link key={r.label} href="/admin#attention" onClick={() => close()}
+                  className="flex items-center gap-3 px-4 py-2.5 text-[13px] text-fg-muted transition-colors hover:bg-white/[0.04] hover:text-fg">
+                  <span className={cx("h-1.5 w-1.5 rounded-full", r.n ? r.tone : "bg-fg-faint")} />
+                  <span className="num w-6 font-semibold text-fg">{r.n}</span>{r.label}
+                </Link>
+              ))}
+            </div>
+          )}
+        </Popover>
+
+        <Popover trigger={(open, toggle) => (
+          <button onClick={toggle} aria-label="Account menu" aria-expanded={open}
+            className="flex items-center gap-2 rounded-lg py-1 pl-1 pr-1.5 transition-colors hover:bg-white/5">
+            <Avatar name="Admin User" size={26} />
+            <Icons.ChevronD size={14} className="hidden text-fg-faint sm:block" />
+          </button>
+        )}>
+          {(close) => (
+            <div className="anim-pop absolute right-0 mt-2 w-60 overflow-hidden rounded-xl border border-line-strong bg-raised shadow-2xl">
+              <div className="border-b border-line px-4 py-3">
+                <p className="text-[13px] font-medium text-fg">Admin User</p>
+                <p className="text-2xs text-fg-subtle">admin@invexal.com · Operations admin</p>
+              </div>
+              <div className="py-1">
+                <Link href="/admin/commercials" onClick={() => close()} className="flex items-center gap-2.5 px-4 py-2 text-[13px] text-fg-muted hover:bg-white/[0.04] hover:text-fg"><Icons.Scale size={14} />Commercial rules</Link>
+                <Link href="/fe" onClick={() => close()} className="flex items-center gap-2.5 px-4 py-2 text-[13px] text-fg-muted hover:bg-white/[0.04] hover:text-fg"><Icons.Wrench size={14} />Switch to FE Portal</Link>
+              </div>
+            </div>
+          )}
+        </Popover>
       </div>
     </header>
+  );
+}
+
+// Sidebar preference, remembered per browser (falls back to memory if storage is blocked)
+const sidebarPref = (() => {
+  const subs = new Set<() => void>();
+  let mem = false;
+  return {
+    subscribe: (cb: () => void) => { subs.add(cb); return () => { subs.delete(cb); }; },
+    get: () => { try { return localStorage.getItem("fe.sidebar") === "1"; } catch { return mem; } },
+    set: (v: boolean) => { mem = v; try { localStorage.setItem("fe.sidebar", v ? "1" : "0"); } catch {} subs.forEach((f) => f()); },
+  };
+})();
+
+function Shell({ children }: { children: React.ReactNode }) {
+  const collapsed = useSyncExternalStore(sidebarPref.subscribe, sidebarPref.get, () => false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const toggle = () => sidebarPref.set(!collapsed);
+
+  return (
+    <div className="admin-shell min-h-full bg-canvas text-fg">
+      <Sidebar collapsed={collapsed} onToggle={toggle} mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
+      <div className={cx("flex min-h-screen min-w-0 flex-col transition-[padding] duration-200 ease-out", collapsed ? "lg:pl-[60px]" : "lg:pl-[232px]")}>
+        <TopBar onMenu={() => setMobileOpen(true)} />
+        <main className="mx-auto w-full min-w-0 max-w-[1600px] flex-1 px-4 py-5 sm:px-6 sm:py-6">{children}</main>
+      </div>
+    </div>
   );
 }
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
     <StoreProvider>
-      <div className="flex h-full bg-gray-50 text-gray-800">
-        <Sidebar />
-        <div className="flex-1 ml-60 min-h-screen flex flex-col">
-          <TopBar />
-          <main className="flex-1 p-6">{children}</main>
-        </div>
-      </div>
+      <ShellProvider>
+        <Shell>{children}</Shell>
+      </ShellProvider>
     </StoreProvider>
   );
 }
