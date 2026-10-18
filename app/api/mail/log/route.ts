@@ -8,8 +8,8 @@ export const dynamic = "force-dynamic";
 /** GET /api/mail/log — processed emails, sync runs and connection status (never the password). */
 export async function GET() {
   const cfg = mailConfig();
-  const state = readState();
-  const { entries, runs } = readMailLog();
+  const state = await readState();
+  const { entries, runs } = await readMailLog();
   return NextResponse.json({
     connection: cfg
       ? { configured: true, user: maskEmail(cfg.user), host: cfg.host, folder: cfg.folder, lookbackDays: cfg.lookbackDays }

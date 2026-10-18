@@ -6,14 +6,14 @@
  * The email trail drives the whole lifecycle — no manual steps:
  *   dispatch → assigned (priced automatically)
  *   photo    → in_progress
- *   cleared  → approved: on-site times recorded, invoice issued, billing locked
+ *   cleared  → approved: on-site times recorded, billing locked (invoiced in the monthly run)
  *   cancelled→ cancelled
  */
 import type { Task, EmailEvent, TaskStatus } from "@/lib/store";
 import { buildRuleKey, calculateCommercial } from "@/lib/commercialEngine";
-import { calcDuration, generateInvoiceNumber } from "@/lib/store";
-import { parseEmail, type ParsedEmail } from "./parse";
-import { AUTO_APPROVE_ON_CLEARED, classifyDistance, classifyService, classifyVisit } from "./rules";
+import { calcDuration } from "@/lib/store";
+import { isClosureStatus, parseEmail, type ParsedEmail } from "./parse";
+import { autoBillOnCleared, classifyDistance, classifyService, classifyVisit } from "./rules";
 import type { AiExtraction } from "./ai";
 
 export type IngestKind = ParsedEmail["kind"] | "update";
@@ -38,15 +38,20 @@ export function allowedSenders(): string[] {
   const env = process.env.MAIL_ALLOWED_SENDERS;
   const list = env ? env.split(",") : ["noreply@orange.com"];
   // Mail auto-forwarded by the mailbox owner keeps the owner as sender
-  if (process.env.MAIL_USER) list.push(process.env.MAIL_USER);
+  const owner = process.env.MAIL_USER || process.env.GMAIL_USER;
+  if (owner) list.push(owner);
   return list.map((s) => s.trim().toLowerCase()).filter(Boolean);
 }
 
 const addr = (from: string) => (from.match(/<([^>]+)>/)?.[1] ?? from).trim().toLowerCase();
 
+/** Lowest number new jobs may use (set from the database so deleted numbers are never reused). */
+let idFloor = 0;
+export function setIdFloor(n: number) { idFloor = n; }
+
 function nextId(tasks: Task[]): string {
   const nums = tasks.map((t) => parseInt(t.id.replace("T-", ""), 10)).filter((n) => !isNaN(n));
-  return `T-${String((nums.length ? Math.max(...nums) : 0) + 1).padStart(3, "0")}`;
+  return `T-${String(Math.max(idFloor, ...nums, 0) + 1).padStart(3, "0")}`;
 }
 
 /** Field engineers are the partner's (ASP); Orange never names the person. */
@@ -83,7 +88,7 @@ const LOCKED: TaskStatus[] = ["approved", "cancelled"];
 function note(p: ParsedEmail): string {
   if (p.kind === "dispatch") return "Work order received from Orange Business";
   if (p.kind === "photo") return `Photo uploaded: ${p.fileName}`;
-  return `Orange marked the work order ${p.status.toLowerCase()}`;
+  return isClosureStatus(p.status) ? `Orange marked the work order ${p.status.toLowerCase()}` : `Orange status: ${p.status}`;
 }
 
 /**
@@ -124,7 +129,9 @@ export function ingestEmail(tasks: Task[], mail: IncomingEmail): { tasks: Task[]
   }
   const t: Task = { ...list[idx] };
   const locked = LOCKED.includes(t.status);
-  const event: EmailEvent = { kind: p.kind, at: mail.date, subject: mail.subject, messageId: mail.messageId, note: note(p) };
+  // Only a real closure counts as "cleared"; other Orange statuses are logged as updates
+  const kind = p.kind === "cleared" && !isClosureStatus(p.status) ? "update" : p.kind;
+  const event: EmailEvent = { kind, at: mail.date, subject: mail.subject, messageId: mail.messageId, note: note(p) };
 
   if (p.kind === "dispatch") {
     t.title       = `${p.product?.split(" · ")[0] ?? "Field visit"} — ${p.endCustomer ? titleCase(p.endCustomer) : p.city ?? p.siteId ?? "site"}`;
@@ -182,11 +189,10 @@ export function ingestEmail(tasks: Task[], mail: IncomingEmail): { tasks: Task[]
       t.comments = [p.closureComment, p.parts, p.releasedNote].filter(Boolean).join("\n");
       if (!t.description && p.description) t.description = p.description;
 
-      if (AUTO_APPROVE_ON_CLEARED) {
+      if (autoBillOnCleared()) {
         const rate = calculateCommercial(t.maintenanceLevel, t.serviceLevel, t.distanceBand, t.visitDuration);
         t.status             = "approved";
         t.approved           = true;
-        t.invoiceNumber      = t.invoiceNumber ?? generateInvoiceNumber();
         t.customerChargeUSD  = rate.customerChargeUSD;
         t.engineerPaymentUSD = rate.engineerPaymentUSD;
         t.profit             = rate.profit;

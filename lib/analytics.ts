@@ -252,10 +252,14 @@ export function activity(tasks: Task[], limit = 8): Activity[] {
 }
 
 // ── Formatting ───────────────────────────────────────────────────────────────
-export const fmtUSD = (n: number, compact = false) =>
-  compact && Math.abs(n) >= 10_000
-    ? `$${(n / 1000).toFixed(1)}k`
-    : `$${Math.round(n).toLocaleString("en-US")}`;
+/** "$1,200", "−$30", "$20.50" (cents only when present), or "$12.5k" when compact. */
+export const fmtUSD = (n: number, compact = false) => {
+  const sign = n < 0 ? "−" : "";
+  const a = Math.abs(n);
+  if (compact && a >= 10_000) return `${sign}$${(a / 1000).toFixed(1)}k`;
+  const cents = Math.round(a * 100) % 100 !== 0;
+  return `${sign}$${a.toLocaleString("en-US", { minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: cents ? 2 : 0 })}`;
+};
 
 export const fmtPct = (n: number | null, digits = 0) =>
   n == null ? "—" : `${(n * 100).toFixed(digits)}%`;

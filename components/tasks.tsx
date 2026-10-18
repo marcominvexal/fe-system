@@ -225,7 +225,7 @@ export function DetailPanel({ task, onClose, onApprove, onCancelClick, onEditCli
             <span className="font-mono text-2xs text-fg-subtle">{task.id}</span>
             <StatusBadge status={task.status} />
             <PriorityTag sl={task.serviceLevel} />
-            {task.invoiceNumber && <Badge tone="ok" dot={false} className="font-mono">{task.invoiceNumber}</Badge>}
+            {task.invoiceId && <Badge tone="ok" dot={false} className="font-mono">{task.invoiceNumber}</Badge>}
           </div>
           <h2 className="text-[16px] font-semibold leading-snug tracking-tight text-fg">{task.title}</h2>
         </div>
@@ -349,7 +349,7 @@ export function DetailPanel({ task, onClose, onApprove, onCancelClick, onEditCli
         )}
         {task.status === "approved" && (
           <p className="flex items-center justify-center gap-2 py-1 text-[13px] font-medium text-[#7bcfa2]">
-            <Icons.Check size={15} />Approved — {task.invoiceNumber}
+            <Icons.Check size={15} />{task.invoiceId ? `Invoiced — ${task.invoiceNumber}` : "Billed — ready to invoice"}
           </p>
         )}
         {(canEdit || canReassign || canCancel) && (
@@ -462,7 +462,7 @@ export function PricingBasis({ lines }: { lines: string[] }) {
           );
         })}
       </ul>
-      <p className="mt-1.5 text-2xs text-fg-faint">Set automatically from Orange&apos;s emails. Rules live in lib/email/rules.ts.</p>
+      <p className="mt-1.5 text-2xs text-fg-faint">Set automatically from Orange&apos;s emails using the Pricing rules page.</p>
     </div>
   );
 }

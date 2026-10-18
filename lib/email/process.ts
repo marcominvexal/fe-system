@@ -5,7 +5,7 @@
  *   3. anything else that mentions Orange field work → Gemini reads it
  */
 import type { Task } from "@/lib/store";
-import { ingestAi, ingestEmail, type IncomingEmail, type IngestOutcome } from "./ingest";
+import { ingestAi, ingestEmail, isTrusted, type IncomingEmail, type IngestOutcome } from "./ingest";
 import { classify } from "./parse";
 import { aiEnabled, extractWithAi, mightBeRelevant } from "./ai";
 
@@ -20,8 +20,9 @@ export async function processEmails(tasks: Task[], emails: IncomingEmail[]) {
   let aiCalls = 0;
 
   for (const mail of emails) {
-    // 1. Fixed templates
-    if (classify(mail.subject)) {
+    // 1. Fixed templates — only from Orange itself. A person replying under an
+    //    Orange subject line is read like any other thread (step 3).
+    if (classify(mail.subject) && isTrusted(mail)) {
       const r = ingestEmail(list, mail);
       list = r.tasks;
       results.push({ mail, outcome: r.outcome });

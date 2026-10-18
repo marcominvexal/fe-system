@@ -49,7 +49,7 @@ export function stages(t: Task, now = Date.now()): Stage[] {
     { key: "cleared", label: STAGE_LABEL.cleared, at: clearedAt,
       detail: t.duration ? `${t.duration} on site` : undefined },
     { key: "billed", label: STAGE_LABEL.billed, at: billedAt,
-      detail: t.status === "approved" && t.customerChargeUSD != null ? `$${t.customerChargeUSD}` : undefined },
+      detail: t.status === "approved" && t.customerChargeUSD != null ? `$${t.customerChargeUSD}${t.invoiceId ? ` · ${t.invoiceNumber}` : ""}` : undefined },
   ];
 
   const done: Record<StageKey, boolean> = {
@@ -86,7 +86,9 @@ export function progress(t: Task): number {
 /** One-line description of where the job stands, for lists. */
 export function headline(t: Task, now = Date.now()): { text: string; tone: "ok" | "warn" | "crit" | "brand" | "muted" } {
   if (t.status === "cancelled") return { text: "Cancelled", tone: "muted" };
-  if (t.status === "approved") return { text: `Billed${t.invoiceNumber ? ` · ${t.invoiceNumber}` : ""}`, tone: "ok" };
+  if (t.status === "approved") return t.invoiceId
+    ? { text: `Invoiced · ${t.invoiceNumber}`, tone: "ok" }
+    : { text: "Billed · ready to invoice", tone: "ok" };
   if (t.status === "completed") return { text: "Cleared · awaiting billing", tone: "warn" };
   const s = stages(t, now).find((x) => x.state === "current" || x.state === "late");
   if (s?.state === "late") return { text: "Engineer late · not on site", tone: "crit" };
@@ -138,7 +140,7 @@ export function timeline(t: Task, now = Date.now()): TimelineEvent[] {
   for (const [at, title] of site) if (at) ev.push({ at, title, kind: "site" });
   if (t.status === "approved") {
     const clearedAt = t.emailLog?.find((e) => e.kind === "cleared")?.at ?? t.checkOutTime ?? t.createdAt;
-    ev.push({ at: clearedAt, title: `Billed${t.invoiceNumber ? ` · ${t.invoiceNumber}` : ""}`,
+    ev.push({ at: clearedAt, title: t.invoiceId ? `Billed · on invoice ${t.invoiceNumber}` : "Billed · ready to invoice",
       detail: t.customerChargeUSD != null ? `$${t.customerChargeUSD} charge · $${t.engineerPaymentUSD} FE pay · $${t.profit} profit` : undefined,
       kind: "billing" });
   }

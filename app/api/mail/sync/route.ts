@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readDb, writeDb } from "@/lib/db";
 import { fetchNewMail, mailConfig, saveSyncPosition } from "@/lib/email/imap";
-import { processEmails } from "@/lib/email/process";
-import { recordBatch, recordFailedRun } from "@/lib/email/log";
+import { applyEmails } from "@/lib/email/persist";
+import { recordFailedRun } from "@/lib/email/log";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -20,23 +19,21 @@ async function sync() {
   }
   try {
     const { emails, scanned, validity, maxUid, prevUid } = await fetchNewMail(cfg);
-    const { tasks, results, aiCalls } = await processEmails(readDb(), emails);
-    if (results.some((r) => r.outcome.status === "created" || r.outcome.status === "updated")) writeDb(tasks);
-    recordBatch("sync", results, scanned);
+    const { results, aiCalls } = await applyEmails(emails, "sync", scanned);
 
     // Stop just before the first email that should be retried next time
     const retryUids = results
       .filter((r) => r.outcome.status === "ignored" && RETRY.test(r.outcome.reason) && r.mail.uid)
       .map((r) => r.mail.uid!);
     const position = retryUids.length ? Math.max(prevUid, Math.min(...retryUids) - 1) : maxUid;
-    saveSyncPosition(validity, position);
+    await saveSyncPosition(validity, position);
 
     return NextResponse.json({ scanned, aiCalls, retryLater: retryUids.length, outcomes: results.map((r) => r.outcome) });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     const auth = /auth|credentials|login|invalid/i.test(msg);
     const error = auth ? "The mailbox rejected the sign-in. Check MAIL_USER and the app password, and that IMAP is enabled." : msg;
-    recordFailedRun("sync", error);
+    await recordFailedRun("sync", error);
     return NextResponse.json({ error }, { status: auth ? 401 : 502 });
   }
 }

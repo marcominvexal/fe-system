@@ -6,8 +6,8 @@
 
 export type MaintenanceLevel = "Planned Activity" | "Reactive Support";
 export type ServiceLevel     = "8x5 NBD" | "8x5 4h" | "24x7 4h";
-export type DistanceBand     = "<50km" | "50-100km" | ">100km";
-export type VisitDuration    = "2h" | "Half Day" | "Full Day";
+import { getPricing, type DistanceBand, type VisitDuration, type RateCategory } from "./pricing";
+export type { DistanceBand, VisitDuration };
 
 export const CURRENCY = "USD" as const;
 
@@ -26,95 +26,21 @@ export interface CommercialResult extends CommercialRate {
 }
 
 // -----------------------------------------------------------------------------
-// Orange Business Pricing Table
-//
-// <50km:
-//   Planned 8x5 NBD   → 2h=100 / Half=120 / Full=200
-//   Reactive 8x5 4h   → 2h=130 / Half=150 / Full=230
-//   Reactive 24x7 4h  → 2h=150 / Half=180 / Full=270
-//
-// 50-100km:
-//   Planned            → 2h=150 / Half=180 / Full=270
-//   Reactive           → 2h=200 / Half=250 / Full=350
-//
-// >100km:
-//   Planned            → 2h=200 / Half=250 / Full=350
-//   Reactive           → 2h=250 / Half=320 / Full=430
-//
-// FE payment ≈ 30% of customer charge (rounded to nearest dollar).
+// Rates come from the active pricing config (lib/pricing.ts), which defaults to
+// the original Orange Business rate card and can be edited on the Pricing rules
+// page. Engineer payment is a share of the charge (30% by default).
 // -----------------------------------------------------------------------------
 
-function fe(charge: number): number {
-  return Math.round(charge * 0.30);
-}
-
 function rate(charge: number): CommercialRate {
-  const engineerPaymentUSD = fe(charge);
+  const engineerPaymentUSD = Math.round(charge * getPricing().fePayPct);
   return { customerChargeUSD: charge, engineerPaymentUSD, profit: charge - engineerPaymentUSD };
 }
 
-// Pricing lookup: [distanceBand][maintenanceCategory][visitDuration]
-// maintenanceCategory collapses serviceLevel for 50-100km / >100km bands
-type PricingLeaf = Record<VisitDuration, CommercialRate>;
-type PricingByMaint = Record<"planned" | "reactive_8x5" | "reactive_24x7", PricingLeaf>;
-type PricingTable = Record<DistanceBand, PricingByMaint>;
+function lookup(band: DistanceBand, cat: RateCategory, visit: VisitDuration): CommercialRate {
+  return rate(getPricing().table[band][cat][visit]);
+}
 
-const TABLE: PricingTable = {
-  "<50km": {
-    planned: {
-      "2h":       rate(100),
-      "Half Day": rate(120),
-      "Full Day": rate(200),
-    },
-    reactive_8x5: {
-      "2h":       rate(130),
-      "Half Day": rate(150),
-      "Full Day": rate(230),
-    },
-    reactive_24x7: {
-      "2h":       rate(150),
-      "Half Day": rate(180),
-      "Full Day": rate(270),
-    },
-  },
-  "50-100km": {
-    planned: {
-      "2h":       rate(150),
-      "Half Day": rate(180),
-      "Full Day": rate(270),
-    },
-    // Both reactive SLA tiers same price at this distance band
-    reactive_8x5: {
-      "2h":       rate(200),
-      "Half Day": rate(250),
-      "Full Day": rate(350),
-    },
-    reactive_24x7: {
-      "2h":       rate(200),
-      "Half Day": rate(250),
-      "Full Day": rate(350),
-    },
-  },
-  ">100km": {
-    planned: {
-      "2h":       rate(200),
-      "Half Day": rate(250),
-      "Full Day": rate(350),
-    },
-    reactive_8x5: {
-      "2h":       rate(250),
-      "Half Day": rate(320),
-      "Full Day": rate(430),
-    },
-    reactive_24x7: {
-      "2h":       rate(250),
-      "Half Day": rate(320),
-      "Full Day": rate(430),
-    },
-  },
-};
-
-function maintKey(
+export function maintKey(
   maintenanceLevel: MaintenanceLevel,
   serviceLevel: ServiceLevel
 ): "planned" | "reactive_8x5" | "reactive_24x7" {
@@ -132,7 +58,7 @@ export function calculateCommercial(
   visitDuration:    VisitDuration
 ): CommercialResult {
   const mk  = maintKey(maintenanceLevel, serviceLevel);
-  const base = TABLE[distanceBand][mk][visitDuration];
+  const base = lookup(distanceBand, mk, visitDuration);
   return {
     ...base,
     ruleKey: buildRuleKey(maintenanceLevel, serviceLevel, distanceBand, visitDuration),
@@ -175,7 +101,7 @@ export function getRateFromKey(key: string): CommercialRate | null {
   const parsed = parseRuleKey(key);
   if (!parsed) return null;
   const mk = maintKey(parsed.maintenanceLevel, parsed.serviceLevel);
-  return TABLE[parsed.distanceBand]?.[mk]?.[parsed.visitDuration] ?? null;
+  return lookup(parsed.distanceBand, mk, parsed.visitDuration);
 }
 
 /** Short human-readable label — e.g. "PA · 8x5 NBD · <50km · Half Day" */

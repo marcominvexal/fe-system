@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { simpleParser } from "mailparser";
 import MsgReader from "@kenjiuno/msgreader";
-import { readDb, writeDb } from "@/lib/db";
 import type { IncomingEmail } from "@/lib/email/ingest";
-import { processEmails } from "@/lib/email/process";
-import { recordBatch } from "@/lib/email/log";
+import { applyEmails } from "@/lib/email/persist";
 
 export const runtime = "nodejs";
 
@@ -35,10 +33,8 @@ export async function POST(req: NextRequest) {
   }
 
   emails.sort((a, b) => a.date.localeCompare(b.date));
-  const { tasks, results } = await processEmails(readDb(), emails);
+  const { results } = await applyEmails(emails, "import");
   const outcomes = results.map((r) => r.outcome);
-  if (outcomes.some((o) => o.status === "created" || o.status === "updated")) writeDb(tasks);
-  if (results.length) recordBatch("import", results);
   if (!results.length && failed.length) {
     return NextResponse.json({ error: `Could not read ${failed.join(", ")}. Upload .eml or Outlook .msg files.` }, { status: 400 });
   }

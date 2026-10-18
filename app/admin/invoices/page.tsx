@@ -1,114 +1,233 @@
 "use client";
 
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/storeContext";
-import { Task, calcDuration, fmtDate } from "@/lib/store";
-import { useShell } from "@/components/shell";
-import { Avatar, Badge, PageHeader, Stat, StatStrip } from "@/components/ui";
-import { DataTable, type Column } from "@/components/DataTable";
+import type { Invoice, Payout } from "@/lib/billing";
 import { Icons } from "@/components/icons";
-import { fmtUSD, taskValue } from "@/lib/analytics";
+import { Badge, Button, Modal, PageHeader, Segmented, Stat, StatStrip, cx, inputCls, labelCls } from "@/components/ui";
+import { INVOICE_TONE, fmtDay, isOverdue, monthLabel, statusLabel } from "@/components/billing";
+import { DataTable, type Column } from "@/components/DataTable";
+import { fmtUSD } from "@/lib/analytics";
 
-export default function InvoicesPage() {
-  const { tasks } = useStore();
-  const { query, setQuery } = useShell();
+interface BillingData {
+  invoices: Invoice[];
+  payouts: Payout[];
+  unbilled: { id: string; workOrder?: string; title: string; amount: number }[];
+}
 
-  const approved  = tasks.filter((t) => t.status === "approved");
-  const completed = tasks.filter((t) => t.status === "completed");
-  const billable  = [...approved, ...completed];
 
-  const totalRev    = approved.reduce((s, t) => s + (t.customerChargeUSD ?? 0), 0);
-  const totalCost   = approved.reduce((s, t) => s + (t.engineerPaymentUSD ?? 0), 0);
-  const totalProfit = approved.reduce((s, t) => s + (t.profit ?? 0), 0);
-  const margin      = totalRev > 0 ? Math.round((totalProfit / totalRev) * 100) : 0;
-  const pendingVal  = completed.reduce((s, t) => s + taskValue(t), 0);
-  const today       = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
-  const month       = new Date().toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+/** First and last day of a YYYY-MM month. */
+function monthRange(ym: string) {
+  const [y, m] = ym.split("-").map(Number);
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return { start: `${ym}-01`, end: `${ym}-${String(last).padStart(2, "0")}` };
+}
 
-  const q = query.toLowerCase();
-  const rows = billable.filter((t) => !q || [t.title, t.id, t.engineerName, t.invoiceNumber ?? ""].some((v) => v.toLowerCase().includes(q)));
+function RunModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
+  const lastMonth = (() => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 7); })();
+  const [month, setMonth] = useState(lastMonth);
+  const [preview, setPreview] = useState<{ visits: { id: string; workOrder?: string; title: string; amount: number }[]; total: number; partners: { partner: string; visits: number; total: number }[] } | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const { start, end } = monthRange(month);
 
-  const columns: Column<Task>[] = [
-    { key: "inv", header: "Invoice", sort: (t) => t.invoiceNumber ?? "",
-      render: (t) => t.invoiceNumber
-        ? <span className="whitespace-nowrap font-mono text-xs text-fg">{t.invoiceNumber}</span>
-        : <span className="text-xs text-fg-faint">Not issued</span> },
-    { key: "task", header: "Task", sort: (t) => t.title,
-      render: (t) => (
-        <div className="min-w-[160px] max-w-[250px]">
-          <p className="truncate font-medium text-fg">{t.title}</p>
-          <p className="mt-0.5 truncate text-2xs text-fg-subtle"><span className="font-mono text-fg-faint">{t.id}</span> · {t.serviceLevel} · {t.visitDuration}</p>
+  useEffect(() => {
+    let live = true;
+    fetch(`/api/billing/run?start=${start}&end=${end}`)
+      .then((r) => r.json())
+      .then((d) => { if (live) { setPreview(d.error ? null : d); setError(d.error ?? ""); } })
+      .catch(() => { if (live) setError("Could not load the preview."); });
+    return () => { live = false; };
+  }, [start, end]);
+
+  const create = async () => {
+    setBusy(true); setError("");
+    const r = await fetch("/api/billing/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ start, end }) });
+    const d = await r.json();
+    setBusy(false);
+    if (!r.ok) { setError(d.error ?? "Could not create the invoice."); return; }
+    onCreated(d.invoice.id);
+  };
+
+  return (
+    <Modal onClose={onClose} label="New invoice run" width="max-w-lg">
+      <h3 className="text-[15px] font-semibold text-fg">New invoice run</h3>
+      <p className="mt-1 text-[13px] text-fg-muted">Groups every billed visit Orange cleared in the month into one draft invoice, and creates the matching partner payouts.</p>
+      <label className={cx(labelCls, "mt-4")} htmlFor="run-month">Billing month</label>
+      <input id="run-month" type="month" value={month} onChange={(e) => setMonth(e.target.value)} className={inputCls} />
+
+      <div className="mt-4 overflow-hidden rounded-lg border border-line">
+        {preview === null && !error && <p className="px-4 py-5 text-center text-xs text-fg-subtle">Checking {monthLabel(start)}…</p>}
+        {preview && (
+          <>
+            <div className="grid grid-cols-2 gap-px bg-line">
+              <div className="bg-panel px-4 py-3"><p className="text-2xs text-fg-subtle">Visits to invoice</p><p className="num mt-0.5 text-[18px] font-semibold text-fg">{preview.visits.length}</p></div>
+              <div className="bg-panel px-4 py-3"><p className="text-2xs text-fg-subtle">Invoice total</p><p className="num mt-0.5 text-[18px] font-semibold text-fg">{fmtUSD(preview.total)}</p></div>
+            </div>
+            {preview.visits.length > 0 ? (
+              <ul className="max-h-48 divide-y divide-line/60 overflow-y-auto border-t border-line text-xs scroll-thin">
+                {preview.visits.map((v) => (
+                  <li key={v.id} className="flex justify-between gap-3 px-4 py-2">
+                    <span className="min-w-0 truncate text-fg-muted"><span className="font-mono text-fg">{v.workOrder ?? v.id}</span> · {v.title}</span>
+                    <span className="num shrink-0 text-fg">{fmtUSD(v.amount)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="border-t border-line px-4 py-4 text-center text-xs text-fg-subtle">No billed visits in {monthLabel(start)} are waiting for an invoice.</p>
+            )}
+            {preview.partners.length > 0 && (
+              <p className="border-t border-line px-4 py-2 text-2xs text-fg-subtle">
+                Payouts: {preview.partners.map((p) => `${p.partner} ${fmtUSD(p.total)}`).join(" · ")}
+              </p>
+            )}
+          </>
+        )}
+      </div>
+      {error && <p role="alert" className="mt-3 text-xs text-[#f08a84]">{error}</p>}
+      <div className="mt-5 flex gap-2">
+        <Button onClick={onClose} className="flex-1">Cancel</Button>
+        <Button variant="primary" onClick={create} disabled={busy || !preview?.visits.length} className="flex-1">
+          {busy ? "Creating…" : "Create draft invoice"}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+export default function BillingPage() {
+  const router = useRouter();
+  const { refresh } = useStore();
+  const [data, setData] = useState<BillingData | null>(null);
+  const [tab, setTab] = useState<"invoices" | "payouts">("invoices");
+  const [showRun, setShowRun] = useState(false);
+  const [payTarget, setPayTarget] = useState<Payout | null>(null);
+  const [payRef, setPayRef] = useState("");
+
+  const load = useCallback(() => {
+    fetch("/api/billing", { cache: "no-store" }).then((r) => r.json()).then(setData).catch(() => setData({ invoices: [], payouts: [], unbilled: [] }));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const invoices = useMemo(() => data?.invoices ?? [], [data]);
+  const payouts = useMemo(() => data?.payouts ?? [], [data]);
+  const unbilledTotal = (data?.unbilled ?? []).reduce((s, u) => s + u.amount, 0);
+  const real = invoices.filter((i) => i.kind === "invoice" && i.status !== "void");
+  const credits = invoices.filter((i) => i.kind === "credit" && i.status !== "void");
+  const creditFor = (id: string) => credits.filter((c) => c.creditFor === id).reduce((s, c) => s + Math.abs(c.total), 0);
+  const outstanding = real.filter((i) => i.status === "sent").reduce((s, i) => s + i.total - creditFor(i.id), 0);
+  const overdue = real.filter(isOverdue);
+  const paidYtd = real.filter((i) => i.status === "paid" && i.paidAt?.startsWith(String(new Date().getFullYear())))
+    .reduce((s, i) => s + i.total - creditFor(i.id), 0);
+  const owedToPartners = payouts.filter((p) => p.status === "pending").reduce((s, p) => s + p.total, 0);
+
+  const invoiceCols: Column<Invoice>[] = [
+    { key: "number", header: "Invoice", sort: (i) => i.number,
+      render: (i) => (
+        <div>
+          <p className="font-mono text-[13px] font-semibold text-fg">{i.number}</p>
+          <p className="text-2xs text-fg-subtle">{i.kind === "credit" ? `Credit note for ${i.creditFor}` : `${i.lines.filter((l) => l.kind === "visit").length} visit(s)`}</p>
         </div>
       ) },
-    { key: "eng", header: "Engineer", sort: (t) => t.engineerName, className: "hidden lg:table-cell",
-      render: (t) => <span className="flex items-center gap-2 whitespace-nowrap text-fg-muted"><Avatar name={t.engineerName} size={22} />{t.engineerName}</span> },
-    { key: "date", header: "Date", sort: (t) => t.checkOutTime || t.createdAt, className: "hidden lg:table-cell",
-      render: (t) => <span className="num whitespace-nowrap text-xs text-fg-subtle" title={fmtDate(t.checkOutTime || t.createdAt)}>{new Date(t.checkOutTime || t.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span> },
-    { key: "dur", header: "Duration", className: "hidden 2xl:table-cell",
-      render: (t) => <span className="num text-xs text-fg-subtle">{t.duration || calcDuration(t.checkInTime, t.checkOutTime)}</span> },
-    { key: "charge", header: "Charge", align: "right", sort: (t) => t.customerChargeUSD ?? taskValue(t),
-      render: (t) => t.customerChargeUSD != null
-        ? <span className="num font-medium text-fg">{fmtUSD(t.customerChargeUSD)}</span>
-        : <span className="num text-xs text-fg-faint" title="Engine estimate — confirmed on approval">~{fmtUSD(taskValue(t))}</span> },
-    { key: "fe", header: "FE pay", align: "right", className: "hidden sm:table-cell", sort: (t) => t.engineerPaymentUSD ?? 0,
-      render: (t) => t.engineerPaymentUSD != null ? <span className="num text-fg-muted">{fmtUSD(t.engineerPaymentUSD)}</span> : <span className="text-fg-faint">—</span> },
-    { key: "profit", header: "Profit", align: "right", sort: (t) => t.profit ?? 0,
-      render: (t) => t.profit != null ? <span className="num font-medium text-[#7bcfa2]">{fmtUSD(t.profit)}</span> : <span className="text-fg-faint">—</span> },
-    { key: "status", header: "Status", sort: (t) => t.status,
-      render: (t) => t.status === "approved" ? <Badge tone="ok">Approved</Badge> : <Badge tone="warn">Pending</Badge> },
+    { key: "period", header: "Period", sort: (i) => i.periodStart,
+      render: (i) => <span className="whitespace-nowrap text-xs text-fg-muted">{monthLabel(i.periodStart)}</span> },
+    { key: "status", header: "Status", sort: (i) => i.status,
+      render: (i) => (
+        <span className="flex items-center gap-1.5">
+          <Badge tone={isOverdue(i) ? "crit" : INVOICE_TONE[i.status]}>{isOverdue(i) ? "Overdue" : statusLabel(i)}</Badge>
+        </span>
+      ) },
+    { key: "dates", header: "Sent / due", className: "hidden md:table-cell",
+      render: (i) => <span className="num whitespace-nowrap text-xs text-fg-subtle">{i.kind === "credit" ? `Issued ${fmtDay(i.sentAt)}` : i.sentAt ? `${fmtDay(i.sentAt)} · due ${fmtDay(i.dueAt)}` : "Not sent"}</span> },
+    { key: "total", header: "Total", align: "right", sort: (i) => i.total,
+      render: (i) => (
+        <div className="text-right">
+          <p className={cx("num font-semibold", i.total < 0 ? "text-[#f08a84]" : "text-fg")}>{fmtUSD(i.total)}</p>
+          {i.kind === "invoice" && creditFor(i.id) > 0 && <p className="num text-2xs text-fg-subtle">−{fmtUSD(creditFor(i.id))} credited</p>}
+        </div>
+      ) },
+    { key: "go", header: <span className="sr-only">Open</span>, align: "right",
+      render: (i) => <Link href={`/admin/invoices/${i.id}`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-0.5 rounded-md px-2 py-1 text-xs font-medium text-fg-muted hover:bg-white/5 hover:text-fg">Open<Icons.ChevronR size={12} /></Link> },
   ];
+
+  const payoutCols: Column<Payout>[] = [
+    { key: "number", header: "Payout", sort: (p) => p.number,
+      render: (p) => <div><p className="font-mono text-[13px] font-semibold text-fg">{p.number}</p><p className="text-2xs text-fg-subtle">{p.lines.length} visit(s)</p></div> },
+    { key: "partner", header: "Partner", sort: (p) => p.partner, render: (p) => <span className="text-fg">{p.partner}</span> },
+    { key: "period", header: "Period", sort: (p) => p.periodStart, className: "hidden md:table-cell",
+      render: (p) => <span className="text-xs text-fg-muted">{monthLabel(p.periodStart)}</span> },
+    { key: "status", header: "Status", sort: (p) => p.status,
+      render: (p) => p.status === "paid"
+        ? <span className="text-xs"><Badge tone="ok">Paid</Badge><span className="ml-2 text-fg-subtle">{fmtDay(p.paidAt)}{p.reference ? ` · ${p.reference}` : ""}</span></span>
+        : <Badge tone="warn">Pending</Badge> },
+    { key: "total", header: "Amount", align: "right", sort: (p) => p.total, render: (p) => <span className="num font-semibold text-fg">{fmtUSD(p.total)}</span> },
+    { key: "act", header: <span className="sr-only">Action</span>, align: "right",
+      render: (p) => p.status === "pending" ? <Button size="sm" onClick={() => { setPayTarget(p); setPayRef(""); }}>Mark paid</Button> : null },
+  ];
+
+  const markPaid = async () => {
+    if (!payTarget) return;
+    await fetch(`/api/billing/payouts/${payTarget.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "pay", reference: payRef }) });
+    setPayTarget(null);
+    load();
+  };
 
   return (
     <div>
-      <PageHeader title="Billing"
-        subtitle={<>Billing period <span className="text-fg-muted">{month}</span> · generated {today}</>} />
+      <PageHeader title="Billing" subtitle="Monthly invoices to Orange Business and payouts to field-engineer partners"
+        actions={<Button variant="primary" onClick={() => setShowRun(true)}><Icons.Plus size={15} />New invoice run</Button>} />
+
+      {data && data.unbilled.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warn/30 bg-warn/[0.05] px-5 py-3.5">
+          <p className="flex items-center gap-2 text-[13px] text-fg">
+            <Icons.Invoice size={15} className="text-[#f0bd6d]" />
+            <span><span className="font-semibold">{data.unbilled.length} billed visit{data.unbilled.length === 1 ? "" : "s"}</span> worth <span className="num font-semibold">{fmtUSD(unbilledTotal)}</span> {data.unbilled.length === 1 ? "is" : "are"} not on an invoice yet.</span>
+          </p>
+          <Button size="sm" onClick={() => setShowRun(true)}>Invoice them</Button>
+        </div>
+      )}
 
       <StatStrip>
-        <Stat label="Invoiced tasks" value={approved.length} foot={`${completed.length} pending approval`} />
-        <Stat label="Total revenue" value={fmtUSD(totalRev)} foot="Customer charges" accent />
-        <Stat label="FE payments" value={fmtUSD(totalCost)} foot="Engineer cost" />
-        <Stat label="Net profit" value={fmtUSD(totalProfit)} foot={`${margin}% margin`} />
+        <Stat label="Ready to invoice" value={fmtUSD(unbilledTotal)} foot={`${data?.unbilled.length ?? 0} billed visit(s)`} accent={unbilledTotal > 0} />
+        <Stat label="Outstanding" value={fmtUSD(outstanding)} foot={overdue.length ? <span className="text-[#f08a84]">{overdue.length} overdue</span> : "Sent, not yet paid"} />
+        <Stat label="Paid this year" value={fmtUSD(paidYtd)} foot="After credit notes" />
+        <Stat label="Owed to partners" value={fmtUSD(owedToPartners)} foot={`${payouts.filter((p) => p.status === "pending").length} pending payout(s)`} />
       </StatStrip>
 
       <section className="overflow-hidden rounded-xl border border-line bg-panel">
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 pb-3 pt-3.5 sm:px-5">
-          <div>
-            <h2 className="text-[13px] font-semibold tracking-tight text-fg">Task billing</h2>
-            <p className="mt-0.5 text-2xs text-fg-subtle">Approved and pending tasks · {fmtUSD(pendingVal)} awaiting approval</p>
-          </div>
-          <div className="relative w-full sm:w-64">
-            <Icons.Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-faint" />
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter invoices…" aria-label="Filter invoices"
-              className="h-8 w-full rounded-lg bg-canvas pl-8 pr-3 text-[13px] text-fg placeholder:text-fg-faint ring-1 ring-inset ring-line-strong focus:outline-none focus:ring-2 focus:ring-brand/70" />
-          </div>
+          <Segmented label="Billing view" value={tab} onChange={setTab}
+            options={[
+              { value: "invoices", label: <span className="flex items-center gap-1.5">Invoices<span className="num text-fg-faint">{invoices.length}</span></span> },
+              { value: "payouts", label: <span className="flex items-center gap-1.5">Partner payouts<span className="num text-fg-faint">{payouts.length}</span></span> },
+            ]} />
         </div>
-
-        {billable.length === 0 ? (
-          <div className="border-t border-line py-16 text-center">
-            <Icons.Invoice size={22} className="mx-auto text-fg-faint" />
-            <p className="mt-3 text-[13px] font-medium text-fg-muted">No billable tasks yet</p>
-            <p className="mt-1 text-xs text-fg-subtle">Complete and approve tasks in the dashboard to generate invoices</p>
-          </div>
+        {tab === "invoices" ? (
+          <DataTable rows={invoices} columns={invoiceCols} rowKey={(i) => i.id} pageSize={15}
+            onRowClick={(i) => router.push(`/admin/invoices/${i.id}`)} initialSort={{ key: "number", dir: "desc" }}
+            empty={<div className="text-fg-subtle"><p className="text-[13px]">No invoices yet</p><p className="mt-1 text-xs">Use “New invoice run” to invoice a month of billed visits.</p></div>} />
         ) : (
-          <>
-            <DataTable rows={rows} columns={columns} rowKey={(t) => t.id} pageSize={15}
-              initialSort={{ key: "date", dir: "desc" }} />
-            <div className="flex flex-wrap items-center justify-end gap-x-10 gap-y-3 border-t border-line bg-raised/60 px-5 py-4">
-              <div className="text-right">
-                <p className="text-2xs font-medium uppercase tracking-[0.06em] text-fg-subtle">Total revenue</p>
-                <p className="num mt-1 text-[17px] font-semibold text-fg">{fmtUSD(totalRev)}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-2xs font-medium uppercase tracking-[0.06em] text-fg-subtle">Total FE cost</p>
-                <p className="num mt-1 text-[17px] font-semibold text-fg-muted">{fmtUSD(totalCost)}</p>
-              </div>
-              <div className="border-l border-line-strong pl-10 text-right">
-                <p className="text-2xs font-medium uppercase tracking-[0.06em] text-fg-subtle">Net profit</p>
-                <p className="num mt-1 text-[22px] font-semibold text-[#7bcfa2]">{fmtUSD(totalProfit)}</p>
-              </div>
-            </div>
-          </>
+          <DataTable rows={payouts} columns={payoutCols} rowKey={(p) => p.id} pageSize={15} initialSort={{ key: "number", dir: "desc" }}
+            empty={<div className="text-fg-subtle"><p className="text-[13px]">No partner payouts yet</p><p className="mt-1 text-xs">Payouts are created with each invoice run.</p></div>} />
         )}
       </section>
+
+      {showRun && <RunModal onClose={() => setShowRun(false)} onCreated={(id) => { setShowRun(false); refresh(); router.push(`/admin/invoices/${id}`); }} />}
+
+      {payTarget && (
+        <Modal onClose={() => setPayTarget(null)} label="Mark payout paid" width="max-w-sm">
+          <h3 className="text-[15px] font-semibold text-fg">Mark {payTarget.number} paid</h3>
+          <p className="mt-1 text-[13px] text-fg-muted">{payTarget.partner} · <span className="num">{fmtUSD(payTarget.total)}</span></p>
+          <label className={cx(labelCls, "mt-4")} htmlFor="pay-ref">Payment reference <span className="normal-case tracking-normal text-fg-faint">(optional)</span></label>
+          <input id="pay-ref" value={payRef} onChange={(e) => setPayRef(e.target.value)} placeholder="e.g. bank transfer ID" className={inputCls} autoFocus />
+          <div className="mt-4 flex gap-2">
+            <Button onClick={() => setPayTarget(null)} className="flex-1">Cancel</Button>
+            <Button variant="success" onClick={markPaid} className="flex-1"><Icons.Check size={14} />Mark paid</Button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

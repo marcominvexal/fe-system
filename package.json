@@ -10,7 +10,9 @@
     "seed": "node --experimental-strip-types scripts/seed.ts"
   },
   "dependencies": {
+    "@electric-sql/pglite": "^0.5.10",
     "@kenjiuno/msgreader": "^1.29.0",
+    "@neondatabase/serverless": "^1.2.0",
     "imapflow": "^2.4.3",
     "mailparser": "^3.9.39",
     "next": "16.2.9",
