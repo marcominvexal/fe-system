@@ -252,8 +252,9 @@ function Shell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const toggle = () => sidebarPref.set(!collapsed);
 
+  // --sidebar lets fixed bars (such as the pricing save bar) start beside the sidebar
   return (
-    <div className="admin-shell min-h-full bg-canvas text-fg">
+    <div className="admin-shell min-h-full bg-canvas text-fg" style={{ "--sidebar": collapsed ? "60px" : "232px" } as React.CSSProperties}>
       <Sidebar collapsed={collapsed} onToggle={toggle} mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
       <div className={cx("flex min-h-screen min-w-0 flex-col transition-[padding] duration-200 ease-out", collapsed ? "lg:pl-[60px]" : "lg:pl-[232px]")}>
         <TopBar onMenu={() => setMobileOpen(true)} />
