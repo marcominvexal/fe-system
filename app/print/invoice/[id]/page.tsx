@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import type { Invoice } from "@/lib/billing";
 import type { Task } from "@/lib/store";
 import type { PricingConfig } from "@/lib/pricing";
+import { ExponentiaLogo } from "@/components/brand";
 
 interface Detail { invoice: Invoice; credits: Invoice[]; original: Invoice | null; workOrders: Task[] }
 
@@ -54,6 +55,7 @@ export default function InvoicePrint() {
         <header className="flex items-start justify-between gap-8 border-b border-neutral-200 pb-6">
           <div>
             {issuer.name ? <>
+              {/exponentia/i.test(issuer.name) && <ExponentiaLogo height={30} onLight className="mb-2" />}
               <p className="text-[17px] font-semibold text-neutral-900">{issuer.name}</p>
               {issuer.address && <p className="whitespace-pre-line text-neutral-600">{issuer.address}</p>}
               {issuer.taxId && <p className="text-neutral-600">Tax ID: {issuer.taxId}</p>}

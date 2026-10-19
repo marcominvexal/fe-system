@@ -6,8 +6,8 @@ const geist = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "FE Management System",
-  description: "Field Engineer Management & Billing — Orange Business Pakistan",
+  title: "FE Management System · Orange Business",
+  description: "Field engineer management and billing for Orange Business, powered by Exponentia Global",
 };
 
 export default function RootLayout({

@@ -6,6 +6,7 @@
 import { getDb } from "./db/client";
 import { DEFAULT_PRICING, setPricing, validatePricing, type PricingConfig } from "./pricing";
 import type { Actor } from "./repo";
+import { writeAudit } from "@/lib/audit";
 
 /** Saved config merged over the defaults, so new settings always have a value. */
 function merge(saved: Partial<PricingConfig> | null): PricingConfig {
@@ -61,10 +62,7 @@ export async function savePricing(next: PricingConfig, actor: Actor, reason?: st
     `INSERT INTO app_state (key, value) VALUES ('pricing', $1::jsonb) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
     [JSON.stringify(next)],
   );
-  await db.query(
-    `INSERT INTO audit_log (entity, entity_id, actor, action, changes, reason) VALUES ('settings', 'pricing', $1, 'updated', $2::jsonb, $3)`,
-    [actor, JSON.stringify(changes), reason ?? null],
-  );
+  await writeAudit({ entity: "settings", entityId: "pricing", actor, action: "updated", changes, reason });
   setPricing(next);
   return { ok: true as const, config: next, changed: Object.keys(changes).length };
 }

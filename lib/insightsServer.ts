@@ -8,6 +8,7 @@ import { listInvoices, listPayouts } from "./billing";
 import { readMailLog } from "./email/log";
 import { loadPricing } from "./settings";
 import { computeFindings, FINDING_GROUP, type Finding } from "./insights";
+import { writeAudit } from "@/lib/audit";
 
 interface Dismissal { at: string; reason: string }
 
@@ -52,17 +53,12 @@ export async function dismissFinding(f: Pick<Finding, "key" | "title">, reason: 
   const d = await readDismissed();
   d[f.key] = { at: new Date().toISOString(), reason };
   await writeDismissed(d);
-  const db = await getDb();
-  await db.query(
-    `INSERT INTO audit_log (entity, entity_id, actor, action, reason) VALUES ('finding', $1, 'admin', 'dismissed', $2)`,
-    [f.key, `${f.title} — ${reason}`],
-  );
+  await writeAudit({ entity: "finding", entityId: f.key, actor: "admin", action: "dismissed", reason: `${f.title} — ${reason}` });
 }
 
 export async function restoreFinding(key: string) {
   const d = await readDismissed();
   delete d[key];
   await writeDismissed(d);
-  const db = await getDb();
-  await db.query(`INSERT INTO audit_log (entity, entity_id, actor, action) VALUES ('finding', $1, 'admin', 'restored')`, [key]);
+  await writeAudit({ entity: "finding", entityId: key, actor: "admin", action: "restored" });
 }

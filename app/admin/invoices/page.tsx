@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/storeContext";
+import { useUser } from "@/lib/userContext";
 import type { Invoice, Payout } from "@/lib/billing";
 import { Icons } from "@/components/icons";
 import { Badge, Button, Modal, PageHeader, Segmented, Stat, StatStrip, cx, inputCls, labelCls } from "@/components/ui";
@@ -100,6 +101,7 @@ function RunModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id:
 export default function BillingPage() {
   const router = useRouter();
   const { refresh } = useStore();
+  const { canEdit } = useUser();
   const [data, setData] = useState<BillingData | null>(null);
   const [tab, setTab] = useState<"invoices" | "payouts">("invoices");
   const [showRun, setShowRun] = useState(false);
@@ -177,7 +179,13 @@ export default function BillingPage() {
   return (
     <div>
       <PageHeader title="Billing" subtitle="Monthly invoices to Orange Business and payouts to field-engineer partners"
-        actions={<Button variant="primary" onClick={() => setShowRun(true)}><Icons.Plus size={15} />New invoice run</Button>} />
+        actions={<>
+          <Link href="/admin/commercials#invoice-settings"
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-raised px-3.5 text-[13px] font-medium text-fg ring-1 ring-inset ring-line-strong transition-colors hover:bg-hover">
+            <Icons.Edit size={14} />Invoice settings
+          </Link>
+          {canEdit && <Button variant="primary" onClick={() => setShowRun(true)}><Icons.Plus size={15} />New invoice run</Button>}
+        </>} />
 
       {data && data.unbilled.length > 0 && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warn/30 bg-warn/[0.05] px-5 py-3.5">

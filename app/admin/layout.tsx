@@ -4,8 +4,11 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { StoreProvider, useStore } from "@/lib/storeContext";
+import { UserProvider, useUser } from "@/lib/userContext";
+import { ROLES } from "@/lib/auth/roles";
 import { ShellProvider, useShell } from "@/components/shell";
 import { Icons } from "@/components/icons";
+import { MadeBy, OrangeMark, PoweredBy } from "@/components/brand";
 import { Avatar, cx } from "@/components/ui";
 import { attention } from "@/lib/analytics";
 import { needsReview } from "@/lib/confidence";
@@ -17,6 +20,7 @@ const NAV = [
   { label: "Billing",       href: "/admin/invoices",    icon: Icons.Invoice },
   { label: "Insights",      href: "/admin/insights",    icon: Icons.Sparkle },
   { label: "Pricing rules", href: "/admin/commercials", icon: Icons.Scale },
+  { label: "Users",         href: "/admin/users",       icon: Icons.Users, adminOnly: true },
 ];
 
 const isActive = (pathname: string, href: string) =>
@@ -28,6 +32,8 @@ function Sidebar({ collapsed, onToggle, mobileOpen, onClose }: {
 }) {
   const pathname = usePathname();
   const { tasks } = useStore();
+  const { isAdmin } = useUser();
+  const nav = NAV.filter((n) => !n.adminOnly || isAdmin);
   const openCount = tasks.filter((t) => !["approved", "cancelled", "rejected"].includes(t.status)).length;
   const reviewCount = tasks.filter(needsReview).length;
 
@@ -45,19 +51,17 @@ function Sidebar({ collapsed, onToggle, mobileOpen, onClose }: {
       >
         {/* Brand */}
         <div className={cx("flex h-14 items-center gap-2.5 border-b border-line", collapsed ? "lg:justify-center lg:px-0 px-4" : "px-4")}>
-          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-gradient-to-b from-brand-soft to-brand-strong text-[#1a0d03] shadow-[inset_0_1px_0_rgb(255_255_255/0.3)]">
-            <Icons.Bolt size={15} />
-          </span>
+          <OrangeMark size={28} className="rounded-[3px]" />
           <div className={cx("min-w-0 leading-tight", collapsed && "lg:hidden")}>
-            <p className="truncate text-[13px] font-semibold tracking-tight text-fg">INVEXAL FieldOps</p>
-            <p className="truncate text-2xs text-fg-subtle">Orange work order billing</p>
+            <p className="truncate text-[13px] font-semibold tracking-tight text-fg">FE Management System</p>
+            <p className="truncate text-2xs text-fg-subtle">Orange Business</p>
           </div>
         </div>
 
         <nav className="scroll-thin flex-1 overflow-y-auto px-2.5 py-3">
           <p className={cx("px-2 pb-2 text-2xs font-medium uppercase tracking-[0.08em] text-fg-faint", collapsed && "lg:hidden")}>Operations</p>
           <ul className="space-y-0.5">
-            {NAV.map((item) => {
+            {nav.map((item) => {
               const active = isActive(pathname, item.href);
               const Icon = item.icon;
               return (
@@ -87,6 +91,11 @@ function Sidebar({ collapsed, onToggle, mobileOpen, onClose }: {
           </ul>
 
         </nav>
+
+        <div className={cx("space-y-2 border-t border-line px-4 py-3", collapsed && "lg:hidden")}>
+          <PoweredBy />
+          <MadeBy />
+        </div>
 
         <div className="hidden border-t border-line p-2.5 lg:block">
           <button onClick={onToggle} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -129,6 +138,8 @@ function TopBar({ onMenu }: { onMenu: () => void }) {
   const router = useRouter();
   const { query, setQuery, setJobView } = useShell();
   const { tasks } = useStore();
+  const { user, canEdit, isAdmin, signOut } = useUser();
+  const roleLabel = ROLES.find((r) => r.value === user?.role)?.label;
   const a = attention(tasks);
   const alerts = a.awaitingClosure.length + a.awaiting.length + a.breached.length + a.pricingCheck.length;
   const searchRef = useRef<HTMLInputElement>(null);
@@ -198,19 +209,24 @@ function TopBar({ onMenu }: { onMenu: () => void }) {
         <Popover trigger={(open, toggle) => (
           <button onClick={toggle} aria-label="Account menu" aria-expanded={open}
             className="flex items-center gap-2 rounded-lg py-1 pl-1 pr-1.5 transition-colors hover:bg-white/5">
-            <Avatar name="Admin User" size={26} />
+            <Avatar name={user?.name ?? "?"} size={26} />
             <Icons.ChevronD size={14} className="hidden text-fg-faint sm:block" />
           </button>
         )}>
           {(close) => (
             <div className="anim-pop absolute right-0 mt-2 w-60 overflow-hidden rounded-xl border border-line-strong bg-raised shadow-2xl">
               <div className="border-b border-line px-4 py-3">
-                <p className="text-[13px] font-medium text-fg">Admin User</p>
-                <p className="text-2xs text-fg-subtle">admin@invexal.com · Operations admin</p>
+                <p className="truncate text-[13px] font-medium text-fg">{user?.name ?? "…"}</p>
+                <p className="truncate text-2xs text-fg-subtle">{user?.email}{roleLabel ? ` · ${roleLabel}` : ""}</p>
+                {user && !canEdit && <p className="mt-1.5 text-2xs text-fg-faint">Read-only access</p>}
               </div>
               <div className="py-1">
+                {isAdmin && <Link href="/admin/users" onClick={() => close()} className="flex items-center gap-2.5 px-4 py-2 text-[13px] text-fg-muted hover:bg-white/[0.04] hover:text-fg"><Icons.Users size={14} />Users</Link>}
                 <Link href="/admin/commercials" onClick={() => close()} className="flex items-center gap-2.5 px-4 py-2 text-[13px] text-fg-muted hover:bg-white/[0.04] hover:text-fg"><Icons.Scale size={14} />Pricing rules</Link>
                 <Link href="/admin/inbox" onClick={() => close()} className="flex items-center gap-2.5 px-4 py-2 text-[13px] text-fg-muted hover:bg-white/[0.04] hover:text-fg"><Icons.Inbox size={14} />Email inbox</Link>
+              </div>
+              <div className="border-t border-line py-1">
+                <button onClick={() => { close(); signOut(); }} className="flex w-full items-center gap-2.5 px-4 py-2 text-left text-[13px] text-fg-muted hover:bg-white/[0.04] hover:text-fg"><Icons.Logout size={14} />Sign out</button>
               </div>
             </div>
           )}
@@ -249,10 +265,12 @@ function Shell({ children }: { children: React.ReactNode }) {
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
-    <StoreProvider>
-      <ShellProvider>
-        <Shell>{children}</Shell>
-      </ShellProvider>
-    </StoreProvider>
+    <UserProvider>
+      <StoreProvider>
+        <ShellProvider>
+          <Shell>{children}</Shell>
+        </ShellProvider>
+      </StoreProvider>
+    </UserProvider>
   );
 }

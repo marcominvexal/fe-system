@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import type { DragEvent } from "react";
 import { Icons } from "./icons";
 import { Button, cx, type Tone } from "./ui";
+import { useUser } from "@/lib/userContext";
 
 type Outcome = { status: string };
 
@@ -54,6 +55,8 @@ export function useMailActions(onDone: () => void) {
 
 export function MailButtons({ actions }: { actions: ReturnType<typeof useMailActions> }) {
   const { busy, sync, importFiles, fileRef } = actions;
+  const { canEdit } = useUser();
+  if (!canEdit) return null;
   return (
     <>
       <Button onClick={sync} disabled={busy} title="Fetch new Orange Business emails">
@@ -83,6 +86,8 @@ export function MailBanner({ actions }: { actions: ReturnType<typeof useMailActi
 export function MailDropZone({ actions }: { actions: ReturnType<typeof useMailActions> }) {
   const [over, setOver] = useState(false);
   const { busy, importFiles, fileRef } = actions;
+  const { canEdit } = useUser();
+  if (!canEdit) return null;
   const onDrop = (e: DragEvent) => {
     e.preventDefault();
     setOver(false);
