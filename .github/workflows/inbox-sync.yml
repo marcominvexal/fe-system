@@ -1,0 +1,31 @@
+# Reads new Orange Business emails into the FE Management System every 15 minutes.
+# Vercel's Hobby plan only runs scheduled jobs once a day, so GitHub runs this one.
+# If a run fails, GitHub emails the repository owner.
+name: Inbox sync
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: inbox-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Sync the Orange inbox
+        env:
+          APP_URL: ${{ vars.APP_URL || 'https://fe-system-demo.vercel.app' }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          code=$(curl -sS -o body.json -w '%{http_code}' --max-time 330 \
+            -H "Authorization: Bearer ${CRON_SECRET}" "${APP_URL}/api/mail/sync")
+          echo "HTTP ${code}"
+          # Show only the counts, never email contents, in this public log
+          node -e 'const b=JSON.parse(require("fs").readFileSync("body.json","utf8"));const o=b.outcomes||[];const n=s=>o.filter(x=>x.status===s).length;console.log(b.error?("Error: "+b.error):`scanned ${b.scanned??0}, created ${n("created")}, updated ${n("updated")}, ignored ${n("ignored")}, AI calls ${b.aiCalls??0}`)' || true
+          # 409 means another sync was already running, which is fine
+          if [ "$code" != "200" ] && [ "$code" != "409" ]; then exit 1; fi
