@@ -83,4 +83,20 @@ export const SCHEMA: string[] = [
      key    TEXT PRIMARY KEY,
      value  JSONB NOT NULL
    )`,
+
+  // Signed-in people, and which person made each audited change
+  `CREATE TABLE IF NOT EXISTS users (
+     id             TEXT PRIMARY KEY,
+     email          TEXT UNIQUE NOT NULL,
+     name           TEXT NOT NULL,
+     role           TEXT NOT NULL,            -- admin | finance | viewer
+     password_hash  TEXT NOT NULL,
+     active         BOOLEAN NOT NULL DEFAULT true,
+     failed_logins  INT NOT NULL DEFAULT 0,
+     locked_until   TIMESTAMPTZ,
+     last_login_at  TIMESTAMPTZ,
+     created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+   )`,
+  `ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS user_email TEXT`,
+  `ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS user_name TEXT`,
 ];

@@ -9,6 +9,7 @@ import { Icons } from "@/components/icons";
 import { Badge, PageHeader, Panel, Segmented, Stat, StatStrip, StatusBadge, cx, type Tone } from "@/components/ui";
 import { DataTable, type Column } from "@/components/DataTable";
 import { MailBanner, MailButtons, MailDropZone, useMailActions } from "@/components/mail";
+import { AutomationStrip, type AutomationInfo } from "@/components/automation";
 import { timeAgo } from "@/lib/analytics";
 import type { MailLogEntry, MailOutcome, SyncRun } from "@/lib/email/log";
 
@@ -17,6 +18,7 @@ interface LogResponse {
   state: { lastRunAt: string | null; lastUid: number | null };
   entries: MailLogEntry[];
   runs: SyncRun[];
+  automation?: AutomationInfo;
 }
 
 const KIND: Record<string, { label: string; tone: Tone }> = {
@@ -136,6 +138,8 @@ export default function InboxPage() {
           </div>
         </div>
       )}
+
+      {data?.automation && <AutomationStrip info={data.automation} runs={data.runs} lastRunAt={data.state.lastRunAt} />}
 
       <MailDropZone actions={mail} />
 

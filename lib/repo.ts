@@ -5,6 +5,7 @@
 import type { Task } from "./store";
 import { getDb } from "./db/client";
 import { taskRow } from "./db/rows";
+import { writeAudit } from "./audit";
 
 /** Who made a change: Orange email template, Gemini, a person, or the system. */
 export type Actor = "email" | "ai" | "admin" | "system";
@@ -16,6 +17,9 @@ export interface AuditEntry {
   action:   string;
   changes:  Record<string, [unknown, unknown]> | null;
   reason:   string | null;
+  /** The signed-in person, for changes made by hand */
+  userName?:  string | null;
+  userEmail?: string | null;
 }
 
 const UPSERT = `
@@ -68,10 +72,7 @@ export async function saveTask(task: Task, actor: Actor, reason?: string, before
   const changes = diff(prev, task);
   if (prev && Object.keys(changes).length === 0) return;
   await db.query(UPSERT, taskRow(task));
-  await db.query(
-    `INSERT INTO audit_log (entity, entity_id, actor, action, changes, reason) VALUES ('work_order', $1, $2, $3, $4::jsonb, $5)`,
-    [task.id, actor, prev ? "updated" : "created", JSON.stringify(changes), reason ?? null],
-  );
+  await writeAudit({ entity: "work_order", entityId: task.id, actor, action: prev ? "updated" : "created", changes, reason });
 }
 
 /** Save every work order that differs between two snapshots (used after email processing). */
@@ -90,10 +91,7 @@ export async function deleteTask(id: string, actor: Actor, reason?: string): Pro
   const db = await getDb();
   const rows = await db.query<{ id: string }>("DELETE FROM work_orders WHERE id = $1 RETURNING id", [id]);
   if (!rows.length) return false;
-  await db.query(
-    `INSERT INTO audit_log (entity, entity_id, actor, action, reason) VALUES ('work_order', $1, $2, 'deleted', $3)`,
-    [id, actor, reason ?? null],
-  );
+  await writeAudit({ entity: "work_order", entityId: id, actor, action: "deleted", reason });
   return true;
 }
 
@@ -116,7 +114,7 @@ export async function highestTaskNumber(): Promise<number> {
 export async function auditFor(id: string): Promise<AuditEntry[]> {
   const db = await getDb();
   const rows = await db.query<AuditEntry & { at: string | Date; changes: unknown }>(
-    `SELECT id, at, actor, action, changes, reason FROM audit_log WHERE entity = 'work_order' AND entity_id = $1 ORDER BY at DESC, id DESC`,
+    `SELECT id, at, actor, action, changes, reason, user_name AS "userName", user_email AS "userEmail" FROM audit_log WHERE entity = 'work_order' AND entity_id = $1 ORDER BY at DESC, id DESC`,
     [id],
   );
   return rows.map((r) => ({

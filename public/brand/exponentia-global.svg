@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 168 32" role="img" aria-label="Exponentia Global">
+  <g fill="none" stroke="#2F80ED" stroke-width="3" stroke-linecap="round">
+    <path d="M4 26 C 12 26, 18 20, 22 6"/>
+    <circle cx="22" cy="6" r="2.2" fill="#2F80ED" stroke="none"/>
+  </g>
+  <text x="32" y="15" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#E8ECF2" letter-spacing="0.2">Exponentia</text>
+  <text x="32" y="28" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="9" font-weight="500" fill="#9AA4B2" letter-spacing="2.4">GLOBAL</text>
+</svg>

@@ -13,6 +13,7 @@ import { getDb } from "./db/client";
 import type { Task } from "./store";
 import { getTask, listTasks, saveTask, type Actor } from "./repo";
 import { getPricing } from "./pricing";
+import { writeAudit } from "@/lib/audit";
 
 export type InvoiceStatus = "draft" | "sent" | "paid" | "void";
 export type PayoutStatus  = "pending" | "paid";
@@ -113,11 +114,7 @@ async function nextNumber(prefix: "INV" | "CN" | "PO", periodStart: string): Pro
 
 // ── Persistence ──────────────────────────────────────────────────────────────
 async function audit(entity: "invoice" | "payout", id: string, actor: Actor, action: string, reason?: string, changes?: object) {
-  const db = await getDb();
-  await db.query(
-    `INSERT INTO audit_log (entity, entity_id, actor, action, changes, reason) VALUES ($1,$2,$3,$4,$5::jsonb,$6)`,
-    [entity, id, actor, action, changes ? JSON.stringify(changes) : null, reason ?? null],
-  );
+  await writeAudit({ entity, entityId: id, actor, action, changes, reason });
 }
 
 async function putInvoice(inv: Invoice) {

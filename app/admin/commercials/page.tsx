@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useStore } from "@/lib/storeContext";
+import { useUser } from "@/lib/userContext";
 import {
   validatePricing, type DistanceBand, type PricingConfig, type RateCategory, type VisitDuration,
 } from "@/lib/pricing";
@@ -40,6 +41,7 @@ function NumberField({ id, label, value, onChange, suffix, step = 1, min = 0 }: 
 
 export default function PricingRulesPage() {
   const { refresh } = useStore();
+  const { user, isAdmin } = useUser();
   const [saved, setSaved] = useState<PricingConfig | null>(null);
   const [cfg, setCfg] = useState<PricingConfig | null>(null);
   const [defaults, setDefaults] = useState<PricingConfig | null>(null);
@@ -84,9 +86,15 @@ export default function PricingRulesPage() {
       <PageHeader title="Pricing rules"
         subtitle="The rate card and the rules that price Orange work orders automatically. Changes apply to new and open work; billed visits keep their price." />
 
+      {user && !isAdmin && (
+        <p className="mb-4 rounded-lg border border-line bg-panel px-4 py-2.5 text-[13px] text-fg-subtle">Read-only: only an admin can change pricing rules and invoice settings.</p>
+      )}
+
       {msg && (
         <div role="status" className={cx("mb-4 rounded-lg border px-4 py-2.5 text-[13px]", msg.ok ? "border-ok/25 bg-ok/[0.07] text-[#7bcfa2]" : "border-crit/25 bg-crit/[0.07] text-[#f08a84]")}>{msg.text}</div>
       )}
+
+      <fieldset disabled={!isAdmin} className="min-w-0">
 
       <div className="grid gap-4 xl:grid-cols-12">
         <div className="min-w-0 space-y-4 xl:col-span-8">
@@ -218,10 +226,10 @@ export default function PricingRulesPage() {
         </div>
 
         <div className="min-w-0 space-y-4 xl:col-span-4">
-          <Panel title="Invoicing" subtitle="Printed on invoices and used for due dates">
+          <Panel id="invoice-settings" className="scroll-mt-20" title="Invoice settings" subtitle="Who invoices Orange, and what prints on every invoice">
             <div className="space-y-3">
               <div>
-                <label className={labelCls} htmlFor="i-name">Your company name</label>
+                <label className={labelCls} htmlFor="i-name">Invoicing company</label>
                 <input id="i-name" value={cfg.issuer.name} onChange={(e) => set((c) => { c.issuer.name = e.target.value; })} className={inputCls} />
               </div>
               <div>
@@ -265,6 +273,8 @@ export default function PricingRulesPage() {
           </Panel>
         </div>
       </div>
+
+      </fieldset>
 
       {/* Save bar */}
       {dirty && (

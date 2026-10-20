@@ -58,7 +58,7 @@ export function JobHistory({ taskId, version }: { taskId: string; version: strin
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline justify-between gap-3">
                 <p className="text-[13px] text-fg">
-                  <span className="font-medium">{a.label}</span>
+                  <span className="font-medium" title={e.userEmail ?? undefined}>{e.actor === "admin" && e.userName ? e.userName : a.label}</span>
                   <span className="text-fg-subtle"> {e.action === "created" ? "created the work order" : e.action === "imported" ? "imported the work order" : e.action === "deleted" ? "deleted the work order" : "updated"}</span>
                 </p>
                 <span className="num shrink-0 text-2xs text-fg-faint">{fmt(e.at)}</span>
