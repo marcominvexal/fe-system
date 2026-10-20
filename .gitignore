@@ -46,3 +46,6 @@ data/pglite/
 .agents/
 .claude/
 skills-lock.json
+
+# Admin sign-in details kept on this machine only
+ADMIN-LOGIN.txt

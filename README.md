@@ -1,87 +1,108 @@
-# FE System — Field Engineer Management & Billing
+# FE Management System · Orange Business
 
-A Joblogic-style enterprise Field Service Management demo for **Orange Business Pakistan** telecom operations.
+Tracks and bills Orange Business field engineer work orders from email. The system reads Orange's work order emails from a shared Gmail inbox, opens and updates each job on its own, prices the visit from the rate card, and turns closed visits into monthly invoices and engineer payouts. Nobody assigns jobs by hand.
 
-## Features
+Invoiced by **Exponentia Global**. Made by **Invexal**.
 
-- **Admin Dashboard** — Create & assign field tasks, 4-step form, KPI cards, live task board with inline approval
-- **FE Workspace** — Mobile-friendly engineer interface with step-by-step flow (Accept → Start → Finish)
-- **AI Report Generation** — Gemini-powered work note improvement via server-side API route
-- **Commercial Engine** — 24-cell pricing matrix (Maintenance Level × SLA × Distance Band)
-- **Invoice Page** — Consolidated billing view for approved tasks
-- **File-based DB** — `/data/db.json` as local persistent store (swap for Vercel KV / Postgres in production)
+**Live:** https://fe-system-demo.vercel.app
 
-## Tech Stack
+## How it works
 
-| Layer | Choice |
-|---|---|
-| Framework | Next.js 16 (App Router) |
-| Language | TypeScript (strict) |
-| Styling | Tailwind CSS v4 |
-| State | React Context + fetch API |
-| Data | `/app/api/tasks` REST routes → `data/db.json` |
-| AI | Google Gemini 1.5 Flash (server-side proxy) |
+| Orange email | Job stage | What happens |
+|---|---|---|
+| Dispatch | Assigned | Job created with site, customer, booked time and SLA; priced from the rate card |
+| Photo | On site | Arrival and departure times recorded |
+| Cleared / closed / resolved | Billed | Visit length set from the times; price locked, ready to invoice |
+| Cancelled | Cancelled | Never billed |
+| Other status (e.g. "Dispatch Rescheduled") | unchanged | Logged on the job's timeline |
 
-## Getting Started
+- Fixed-format Orange emails are trusted only from `MAIL_ALLOWED_SENDERS` (or forwarded with the original quoted). Anything else is read by Google Gemini; AI-read jobs are flagged for checking and AI never bills.
+- Every email is processed once (tracked by Message-ID). At most 30 emails per sync go to the AI; the rest wait for the next sync.
+- Billed is not invoiced: a monthly invoice run (`INV-YYYYMM-NN`) picks up billed visits and creates engineer payouts (`PO-…`). Credit notes are `CN-…`.
 
-```bash
-npm install
-cp .env.example .env.local   # add your Gemini API key
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000)
+## Pages
 
 | Route | Purpose |
 |---|---|
-| `/admin` | Operations dashboard (create tasks, approve, view billing) |
-| `/fe/workspace` | Field engineer mobile workspace |
-| `/invoice` | Invoice & billing summary |
+| `/login` | Sign in; creates the first admin when there are no users |
+| `/admin` | Overview: what needs attention, revenue, pipeline |
+| `/admin/jobs`, `/admin/jobs/[id]` | Work orders; job page with stage tracker, email timeline, change history, pricing |
+| `/admin/inbox` | Processed emails, sync history, automation status, `.msg`/`.eml` upload |
+| `/admin/invoices`, `/admin/invoices/[id]` | Invoice runs, credit notes, payouts, CSV |
+| `/print/invoice/[id]` | Printable invoice pack |
+| `/admin/insights` | Findings (leakage, anomalies, collections), price review, statement reconciliation |
+| `/admin/commercials` | Rate card, pricing rules, invoice settings |
+| `/admin/users` | People, roles, password resets (admins only) |
 
-## Environment Variables
+`/fe` and `/invoice` are left over from the original demo and are not part of the workflow.
 
-| Variable | Required | Description |
+## Roles
+
+| | Admin | Finance | Viewer |
+|---|---|---|---|
+| View everything | ✓ | ✓ | ✓ |
+| Sync inbox, upload emails, price review, invoicing, payouts | ✓ | ✓ | |
+| Delete jobs, pricing rules, invoice settings, users | ✓ | | |
+
+Sessions are HMAC-signed HttpOnly cookies (12 hours). Five wrong passwords lock an account for 15 minutes. `proxy.ts` gates every page and API call; writes re-check the user in the database, so switching someone off takes effect at once.
+
+## Automation
+
+| Job | Schedule | Runs on |
 |---|---|---|
-| `GEMINI_API_KEY` | Optional | Google Gemini API key. Falls back to mock report if not set. |
+| Inbox sync, `GET /api/mail/sync` | Every 15 minutes | GitHub Actions (`.github/workflows/inbox-sync.yml`). Vercel's Hobby plan only allows daily jobs. |
+| Daily digest, `GET /api/digest` | 03:00 UTC (08:00 Pakistan) | Vercel Cron (`vercel.json`) |
+| Failure alert email to admins | When a scheduled sync fails, at most every 6 hours | Inside the sync |
 
-**Never use `NEXT_PUBLIC_GEMINI_API_KEY`** — the key is server-only and proxied through `/api/gemini`.
+Both scheduled calls send `Authorization: Bearer $CRON_SECRET`. The secret must be set in Vercel and as the GitHub Actions secret `CRON_SECRET`. A database lock stops two syncs running at once. The Inbox page shows the status of all three.
 
-## Billing Rules
+## Running locally
 
-Tasks are priced on a 3-dimension matrix:
+```bash
+npm install
+cp .env.example .env.local   # fill in the values below
+npm run dev                  # http://localhost:3000
+```
 
-- **Maintenance Level**: Reactive Support / Planned Activity / Preventive Maintenance
-- **SLA**: 24x7 4h / 24x7 NBD / 8x5 4h / 8x5 NBD
-- **Distance Band**: <50km / 50–100km / >100km
+Without `DATABASE_URL` the app uses an embedded Postgres in `data/pglite`. Tables are created on first start.
 
-Billing is calculated server-side at checkout (`PATCH /api/tasks { action: "finish" }`).
+Before deploying: `npx tsc --noEmit`, `npm run lint`, `npm run build`.
 
-## Deployment (Vercel)
+## Settings
 
-1. Push to GitHub
-2. Import repo in Vercel
-3. Add `GEMINI_API_KEY` in Vercel → Project → Settings → Environment Variables
-4. Deploy
+| Variable | Needed | Purpose |
+|---|---|---|
+| `DATABASE_URL` | Yes | Postgres (Neon) connection string |
+| `AUTH_SECRET` | Yes | Signs sessions; 32+ random characters |
+| `MAIL_USER` / `GMAIL_USER` | Yes | Mailbox to read and send from |
+| `MAIL_APP_PASSWORD` / `GMAIL_APP_PASSWORD` | Yes | Gmail app password (IMAP on) |
+| `GEMINI_API_KEY` | For AI | Reads free-form emails |
+| `CRON_SECRET` | For schedules | Lets the scheduler call sync and digest |
+| `SETUP_CODE` | Optional | Allows creating the first admin on a hosted deployment |
+| `DIGEST_TO`, `ALERT_TO` | Optional | Override who gets the digest and alerts |
+| `APP_URL` | Optional | Address used in email links |
+| `MAIL_ALLOWED_SENDERS`, `MAIL_FOLDER`, `MAIL_LOOKBACK_DAYS`, `MAIL_MAX_AI_PER_RUN`, `GEMINI_MODEL` | Optional | Email reading defaults |
 
-> **Note**: `fs.writeFileSync` on Vercel's serverless is read-only — data will reset on cold starts.  
-> For persistent production use, replace `lib/db.ts` with Vercel KV or Supabase.
+Never commit `.env.local`.
 
-## Project Structure
+## Deployment
+
+Vercel project `fe-system-demo`, Neon database `fe-system-db` (connected through the Vercel integration). Deploy with `vercel deploy --prod` or by pushing to `main` if the project is linked to Git.
+
+## Project structure
 
 ```
-app/
-  admin/page.tsx          # Operations dashboard
-  fe/workspace/page.tsx   # Field engineer workspace
-  invoice/page.tsx        # Billing & invoice view
-  api/
-    gemini/route.ts       # Server-side Gemini proxy
-    tasks/route.ts        # GET / POST / PATCH task API
-  layout.tsx              # Root layout with sidebar
-lib/
-  store.ts                # Task type + reference data
-  storeContext.tsx        # React context (fetches from /api/tasks)
-  db.ts                   # File-based DB (server-only)
-  commercialEngine.ts     # Pricing matrix engine
-data/
-  db.json                 # Seed data (gitignored)
+proxy.ts                 Sign-in gate for pages and API
+app/admin/               The admin app (pages listed above)
+app/login/               Sign-in and first-admin setup
+app/api/                 tasks, mail (sync/import/log), billing, insights, settings, auth, users, digest, audit
+lib/db/                  Postgres client (Neon or PGlite), schema, migration from the old JSON files
+lib/email/               IMAP fetch, template parser, AI reading, ingest rules, sync lock
+lib/auth/                Passwords, sessions, roles, users
+lib/notify/              Mailer, daily digest, failure alerts
+lib/billing.ts           Invoice runs, credit notes, payouts
+lib/pricing.ts           Rate card and pricing rules
+lib/insights.ts          Findings; lib/confidence.ts price confidence; lib/reconcile.ts statements
+lib/repo.ts, lib/audit.ts Work orders and the audit trail
+public/brand/            Logos (replace a file to change a logo)
 ```
