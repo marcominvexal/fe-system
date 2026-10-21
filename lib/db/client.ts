@@ -3,7 +3,7 @@
  *
  *   DATABASE_URL set   → Neon (serverless Postgres over HTTP)
  *   DATABASE_URL unset → PGlite, an embedded Postgres stored in data/pglite
- *                        (in memory on read-only hosts such as a Vercel demo)
+ *                        (in memory on read-only hosts such as Vercel without DATABASE_URL)
  *
  * Both run the same SQL, so moving to Neon is a configuration change only.
  */

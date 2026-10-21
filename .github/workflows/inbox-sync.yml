@@ -19,7 +19,7 @@ jobs:
     steps:
       - name: Sync the Orange inbox
         env:
-          APP_URL: ${{ vars.APP_URL || 'https://fe-system-demo.vercel.app' }}
+          APP_URL: ${{ vars.APP_URL || 'https://orange-fe-system.vercel.app' }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           code=$(curl -sS -o body.json -w '%{http_code}' --max-time 330 \

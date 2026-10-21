@@ -4,7 +4,7 @@ Tracks and bills Orange Business field engineer work orders from email. The syst
 
 Invoiced by **Exponentia Global**. Made by **Invexal**.
 
-**Live:** https://fe-system-demo.vercel.app
+**Live:** https://orange-fe-system.vercel.app
 
 ## How it works
 
@@ -87,7 +87,7 @@ Never commit `.env.local`.
 
 ## Deployment
 
-Vercel project `fe-system-demo`, Neon database `fe-system-db` (connected through the Vercel integration). Deploy with `vercel deploy --prod` or by pushing to `main` if the project is linked to Git.
+Vercel project `orange-fe-system`, Neon database `fe-system-db` (connected through the Vercel integration). Deploy with `vercel deploy --prod` or by pushing to `main` if the project is linked to Git.
 
 ## Project structure
 
