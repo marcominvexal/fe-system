@@ -151,7 +151,7 @@ export function ingestEmail(tasks: Task[], mail: IncomingEmail): { tasks: Task[]
     // Price automatically — but never re-price a job that is already billed
     if (!locked) {
       const svc = classifyService(p.openedAt, p.scheduledAt);
-      const dist = classifyDistance(p.city);
+      const dist = classifyDistance({ city: p.city, siteId: p.siteId ?? t.siteId, location: t.location });
       const visitBasis = t.pricingBasis?.find((b) => b.startsWith("Visit "));
       t.maintenanceLevel = svc.maintenanceLevel;
       t.serviceLevel     = svc.serviceLevel;
@@ -235,7 +235,7 @@ export function ingestAi(tasks: Task[], mail: IncomingEmail, ai: AiExtraction): 
   const created = idx === -1;
   if (created) {
     const svc = classifyService(undefined, ai.scheduledAt);
-    const dist = classifyDistance(ai.city);
+    const dist = classifyDistance({ city: ai.city, siteId: ai.siteId, location: [ai.siteId, ai.city].filter(Boolean).join(" ") });
     list.push({
       id: nextId(list),
       title: `${ai.kind === "dispatch" ? "Field visit" : "Orange incident"} — ${ai.endCustomer ?? ai.city ?? ai.siteId ?? wo}`,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { loadPricing, savePricing } from "@/lib/settings";
 import { DEFAULT_PRICING, type PricingConfig } from "@/lib/pricing";
 import { getDb } from "@/lib/db/client";
+import { recheckDistances } from "@/lib/recheck";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,7 +25,9 @@ export async function GET() {
 /** PUT — save an edited config (validated). Billed work is never re-priced. */
 export async function PUT(req: NextRequest) {
   const { config, reason } = await req.json() as { config: PricingConfig; reason?: string };
-  const r = await savePricing(config, "admin", reason || "Edited on the Pricing rules page");
+  const r = await savePricing(config, "admin", reason || "Edited on the Contract & rates page");
   if (!r.ok) return NextResponse.json({ error: r.errors.join(" "), errors: r.errors }, { status: 400 });
-  return NextResponse.json(r);
+  // Open work follows the new distance rules straight away
+  const { changed } = r.changed ? await recheckDistances("system", "Distance re-checked after the contract & rates changed") : { changed: [] };
+  return NextResponse.json({ ...r, recheckedJobs: changed });
 }

@@ -7,6 +7,7 @@ import {
   validatePricing, type DistanceBand, type PricingConfig, type RateCategory, type VisitDuration,
 } from "@/lib/pricing";
 import { Icons } from "@/components/icons";
+import { bandForKm, distanceFromCentres } from "@/lib/geo";
 import { Button, PageHeader, Panel, Select, cx, inputCls, labelCls, textareaCls } from "@/components/ui";
 
 const DISTANCES: DistanceBand[] = ["<50km", "50-100km", ">100km"];
@@ -57,6 +58,8 @@ export default function PricingRulesPage() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [newCity, setNewCity] = useState("");
+  const [newSite, setNewSite] = useState("");
+  const [probe, setProbe] = useState("");
 
   const load = useCallback(() => {
     fetch("/api/settings/pricing", { cache: "no-store" }).then((r) => r.json()).then((d) => {
@@ -81,12 +84,13 @@ export default function PricingRulesPage() {
     const d = await r.json();
     setBusy(false);
     if (!r.ok) { setMsg({ ok: false, text: d.error ?? "Could not save." }); return; }
-    setMsg({ ok: true, text: `Saved ${d.changed} change${d.changed === 1 ? "" : "s"}. New and open work orders use the new rules; billed work keeps its price.` });
+    setMsg({ ok: true, text: `Saved ${d.changed} change${d.changed === 1 ? "" : "s"}. ${d.recheckedJobs?.length ? `${d.recheckedJobs.length} open work order(s) got a new distance band. ` : ""}Billed work keeps its price.` });
     setReason("");
     load(); refresh();
   };
 
   const cities = Object.entries(cfg.rules.cityDistance).sort(([a], [b]) => a.localeCompare(b));
+  const sites = Object.entries(cfg.rules.siteDistanceKm ?? {}).sort(([a], [b]) => a.localeCompare(b));
 
   return (
     <div className="pb-24">
@@ -227,40 +231,115 @@ export default function PricingRulesPage() {
             </div>
           </Panel>
 
-          {/* Cities */}
-          <Panel title="Distance by site city" subtitle={`Cities not listed use the default band and are flagged for checking`}>
-            <div className="mb-3 grid gap-3 sm:grid-cols-2">
+          {/* Distance */}
+          <Panel title="Distance from Multinet data centres" subtitle="A visit's distance band is measured from the nearest Multinet data centre to the site's city, as straight-line distance × road factor. Measured distances for particular sites take priority.">
+            <div className="space-y-5">
+              {/* Data centres */}
               <div>
-                <label className={labelCls} htmlFor="r-default">Default band</label>
-                <Select id="r-default" value={cfg.rules.defaultDistance} onChange={(e) => set((c) => { c.rules.defaultDistance = e.target.value as DistanceBand; })}>
-                  {DISTANCES.map((d) => <option key={d}>{d}</option>)}
-                </Select>
+                <p className={labelCls}>Data centres</p>
+                <ul className="divide-y divide-line border border-line">
+                  {cfg.rules.dataCentres.map((c, i) => (
+                    <li key={i} className="grid grid-cols-[minmax(0,1fr)_110px_110px_32px] items-center gap-2 px-3 py-1.5">
+                      <input aria-label="Data centre name" value={c.name} onChange={(e) => set((n) => { n.rules.dataCentres[i].name = e.target.value; })} className={cx(inputCls, "h-8")} />
+                      <input aria-label={`${c.name} latitude`} type="number" step="0.0001" value={Number.isFinite(c.lat) ? c.lat : ""}
+                        onChange={(e) => set((n) => { n.rules.dataCentres[i].lat = e.target.value === "" ? NaN : Number(e.target.value); })} className={cx(inputCls, "num h-8")} />
+                      <input aria-label={`${c.name} longitude`} type="number" step="0.0001" value={Number.isFinite(c.lng) ? c.lng : ""}
+                        onChange={(e) => set((n) => { n.rules.dataCentres[i].lng = e.target.value === "" ? NaN : Number(e.target.value); })} className={cx(inputCls, "num h-8")} />
+                      <button type="button" aria-label={`Remove ${c.name}`} onClick={() => set((n) => { n.rules.dataCentres.splice(i, 1); })}
+                        className="grid h-8 w-8 place-items-center text-fg-faint hover:bg-black/[0.04] hover:text-crit-fg"><Icons.X size={14} /></button>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-2xs text-fg-subtle">Latitude and longitude, e.g. from Google Maps (right-click the building).</p>
+                  <Button size="sm" type="button" onClick={() => set((n) => { n.rules.dataCentres.push({ name: "New data centre", lat: NaN, lng: NaN }); })}><Icons.Plus size={13} />Add data centre</Button>
+                </div>
               </div>
-            </div>
-            <ul className="divide-y divide-line/60 rounded-lg border border-line">
-              {cities.map(([city, band]) => (
-                <li key={city} className="flex items-center gap-3 px-3 py-1.5">
-                  <span className="flex-1 text-[13px] capitalize text-fg">{city}</span>
-                  <Select aria-label={`Distance for ${city}`} value={band} className="w-36 [&_select]:h-8"
-                    onChange={(e) => set((c) => { c.rules.cityDistance[city] = e.target.value as DistanceBand; })}>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <NumberField id="r-road" label="Road factor" suffix="× straight line" step={0.05} min={1} value={cfg.rules.roadFactor}
+                  onChange={(n) => set((c) => { c.rules.roadFactor = n; })} />
+                <div>
+                  <label className={labelCls} htmlFor="r-default">If the site&apos;s city is unknown</label>
+                  <Select id="r-default" value={cfg.rules.defaultDistance} onChange={(e) => set((c) => { c.rules.defaultDistance = e.target.value as DistanceBand; })}>
                     {DISTANCES.map((d) => <option key={d}>{d}</option>)}
                   </Select>
-                  <button type="button" aria-label={`Remove ${city}`} onClick={() => set((c) => { delete c.rules.cityDistance[city]; })}
-                    className="grid h-8 w-8 place-items-center rounded-md text-fg-faint hover:bg-black/[0.04] hover:text-crit-fg"><Icons.X size={14} /></button>
-                </li>
-              ))}
-              {!cities.length && <li className="px-3 py-3 text-xs text-fg-subtle">No cities yet — every site uses the default band.</li>}
-            </ul>
-            <form className="mt-3 flex gap-2" onSubmit={(e) => {
-              e.preventDefault();
-              const key = newCity.trim().toLowerCase();
-              if (!key) return;
-              set((c) => { c.rules.cityDistance[key] = c.rules.cityDistance[key] ?? c.rules.defaultDistance; });
-              setNewCity("");
-            }}>
-              <input value={newCity} onChange={(e) => setNewCity(e.target.value)} placeholder="Add a city, e.g. Hyderabad" aria-label="New city" className={cx(inputCls, "h-8")} />
-              <Button type="submit" size="sm" className="h-8 shrink-0"><Icons.Plus size={13} />Add city</Button>
-            </form>
+                </div>
+              </div>
+
+              {/* Tester */}
+              <div className="bg-brand-tint px-3 py-3">
+                <label className={labelCls} htmlFor="r-test">Check a site</label>
+                <input id="r-test" value={probe} onChange={(e) => setProbe(e.target.value)} placeholder="City, address or site ID, e.g. Sahiwal or PK-SWN-FAC" className={inputCls} />
+                {probe.trim() && (() => {
+                  const r = distanceFromCentres({ city: probe, siteId: probe, location: probe }, cfg.rules.dataCentres, cfg.rules.roadFactor);
+                  return <p className="mt-2 text-[13px] text-fg">{r
+                    ? <><b>{r.city}</b> is about <b>{r.km} km</b> by road from {r.centre}, so it is billed as <b>{r.band}</b>.</>
+                    : <>City not recognised. Visits there use the default band ({cfg.rules.defaultDistance}) unless you set a measured distance below.</>}</p>;
+                })()}
+              </div>
+
+              {/* Measured distances per site */}
+              <div>
+                <p className={labelCls}>Measured distances for particular sites</p>
+                <ul className="divide-y divide-line border border-line">
+                  {sites.map(([site, km]) => (
+                    <li key={site} className="flex items-center gap-3 px-3 py-1.5">
+                      <span className="flex-1 font-mono text-[13px] text-fg">{site}</span>
+                      <div className="relative w-32">
+                        <input type="number" min={0} aria-label={`Distance for ${site}`} value={Number.isFinite(km) ? km : ""}
+                          onChange={(e) => set((c) => { c.rules.siteDistanceKm[site] = e.target.value === "" ? NaN : Number(e.target.value); })}
+                          className={cx(inputCls, "num h-8 pr-9")} />
+                        <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-fg-subtle">km</span>
+                      </div>
+                      <span className="w-20 font-mono text-xs text-brand-soft">{Number.isFinite(km) ? bandForKm(km) : ""}</span>
+                      <button type="button" aria-label={`Remove ${site}`} onClick={() => set((c) => { delete c.rules.siteDistanceKm[site]; })}
+                        className="grid h-8 w-8 place-items-center text-fg-faint hover:bg-black/[0.04] hover:text-crit-fg"><Icons.X size={14} /></button>
+                    </li>
+                  ))}
+                  {!sites.length && <li className="px-3 py-3 text-xs text-fg-subtle">None yet. Every site is estimated from its city.</li>}
+                </ul>
+                <form className="mt-2 flex gap-2" onSubmit={(e) => {
+                  e.preventDefault();
+                  const key = newSite.trim().toUpperCase();
+                  if (!key) return;
+                  set((c) => { c.rules.siteDistanceKm[key] = c.rules.siteDistanceKm[key] ?? NaN; });
+                  setNewSite("");
+                }}>
+                  <input value={newSite} onChange={(e) => setNewSite(e.target.value)} placeholder="Site ID, e.g. PK-SWN-FAC" aria-label="New site ID" className={cx(inputCls, "h-8")} />
+                  <Button type="submit" size="sm" className="h-8 shrink-0"><Icons.Plus size={13} />Add site</Button>
+                </form>
+              </div>
+
+              {/* Cities by hand */}
+              <details className="border border-line" open={cities.length > 0}>
+                <summary className="cursor-pointer px-3 py-2 text-[13px] font-bold text-fg">Cities with a band set by hand ({cities.length})</summary>
+                <ul className="divide-y divide-line border-t border-line">
+                  {cities.map(([city, band]) => (
+                    <li key={city} className="flex items-center gap-3 px-3 py-1.5">
+                      <span className="flex-1 text-[13px] capitalize text-fg">{city}</span>
+                      <Select aria-label={`Distance for ${city}`} value={band} className="w-36 [&_select]:h-8"
+                        onChange={(e) => set((c) => { c.rules.cityDistance[city] = e.target.value as DistanceBand; })}>
+                        {DISTANCES.map((d) => <option key={d}>{d}</option>)}
+                      </Select>
+                      <button type="button" aria-label={`Remove ${city}`} onClick={() => set((c) => { delete c.rules.cityDistance[city]; })}
+                        className="grid h-8 w-8 place-items-center text-fg-faint hover:bg-black/[0.04] hover:text-crit-fg"><Icons.X size={14} /></button>
+                    </li>
+                  ))}
+                  {!cities.length && <li className="px-3 py-3 text-xs text-fg-subtle">None. Use this only to override the measurement for a whole city.</li>}
+                </ul>
+                <form className="flex gap-2 border-t border-line p-3" onSubmit={(e) => {
+                  e.preventDefault();
+                  const key = newCity.trim().toLowerCase();
+                  if (!key) return;
+                  set((c) => { c.rules.cityDistance[key] = c.rules.cityDistance[key] ?? c.rules.defaultDistance; });
+                  setNewCity("");
+                }}>
+                  <input value={newCity} onChange={(e) => setNewCity(e.target.value)} placeholder="City, e.g. Hyderabad" aria-label="New city" className={cx(inputCls, "h-8")} />
+                  <Button type="submit" size="sm" className="h-8 shrink-0"><Icons.Plus size={13} />Add city</Button>
+                </form>
+              </details>
+            </div>
           </Panel>
         </div>
 

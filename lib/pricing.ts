@@ -4,6 +4,8 @@
  * loaded from the database on the server and fetched by the browser, and can
  * be edited on the Pricing rules page.
  */
+import { MULTINET_DATA_CENTRES, type DataCentre } from "./geo";
+
 export type DistanceBand  = "<50km" | "50-100km" | ">100km";
 export type VisitDuration = "2h" | "Half Day" | "Full Day";
 export type RateCategory  = "planned" | "reactive_8x5" | "reactive_24x7";
@@ -16,8 +18,11 @@ export interface PricingRules {
   urgentLeadHours:  number;                 // reactive & booked within → 4h tier
   businessDays:     number[];               // 0 = Sun … 6 = Sat
   businessHours:    { start: number; end: number };
-  cityDistance:     Record<string, DistanceBand>;
-  defaultDistance:  DistanceBand;
+  dataCentres:      DataCentre[];            // distance is measured from the nearest of these
+  roadFactor:       number;                   // straight-line distance × this ≈ road distance
+  siteDistanceKm:   Record<string, number>;   // measured road distance for particular site IDs
+  cityDistance:     Record<string, DistanceBand>;  // manual band for a city, overriding the measurement
+  defaultDistance:  DistanceBand;             // when the site's city can't be found
   visitBands:       { twoHourMaxMin: number; halfDayMaxMin: number };
   autoBillOnCleared: boolean;               // lock billing when Orange clears the visit
 }
@@ -91,7 +96,10 @@ export const DEFAULT_PRICING: PricingConfig = {
     urgentLeadHours: 4,
     businessDays: [1, 2, 3, 4, 5],
     businessHours: { start: 9, end: 17 },
-    cityDistance: { karachi: "<50km", lahore: "<50km", islamabad: "<50km", rawalpindi: "<50km" },
+    dataCentres: MULTINET_DATA_CENTRES,
+    roadFactor: 1.25,
+    siteDistanceKm: {},
+    cityDistance: {},
     defaultDistance: "<50km",
     visitBands: { twoHourMaxMin: 150, halfDayMaxMin: 300 },
     autoBillOnCleared: true,
@@ -130,6 +138,16 @@ export function validatePricing(c: PricingConfig): string[] {
   if (!(r.urgentLeadHours > 0 && r.urgentLeadHours <= r.plannedLeadHours)) errs.push("Urgent threshold must be above 0 and not more than the planned threshold.");
   if (!(r.businessHours.start >= 0 && r.businessHours.end <= 24 && r.businessHours.start < r.businessHours.end)) errs.push("Business hours must run from an earlier to a later hour.");
   if (!(r.visitBands.twoHourMaxMin > 0 && r.visitBands.halfDayMaxMin > r.visitBands.twoHourMaxMin)) errs.push("Half-day limit must be longer than the 2-hour limit.");
+  if (!(r.roadFactor >= 1 && r.roadFactor <= 3)) errs.push("Road factor must be between 1 and 3.");
+  if (!r.dataCentres?.length) errs.push("Add at least one data centre to measure distance from.");
+  for (const c of r.dataCentres ?? []) {
+    if (!c.name?.trim()) errs.push("Every data centre needs a name.");
+    if (!(c.lat >= 23 && c.lat <= 38 && c.lng >= 60 && c.lng <= 78)) errs.push(`${c.name || "A data centre"} needs a latitude and longitude in Pakistan.`);
+  }
+  for (const [site, km] of Object.entries(r.siteDistanceKm ?? {})) {
+    if (!site.trim()) errs.push("Site IDs cannot be empty.");
+    if (!(km >= 0 && km < 3000)) errs.push(`Distance for ${site} must be a number of kilometres.`);
+  }
   for (const [city, band] of Object.entries(r.cityDistance)) {
     if (!city.trim()) errs.push("City names cannot be empty.");
     if (!DISTANCES.includes(band)) errs.push(`Distance for ${city} is not a valid band.`);

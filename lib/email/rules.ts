@@ -9,6 +9,7 @@
  */
 import type { MaintenanceLevel, ServiceLevel, DistanceBand, VisitDuration } from "@/lib/commercialEngine";
 import { getPricing } from "@/lib/pricing";
+import { bandForKm, distanceFromCentres } from "@/lib/geo";
 
 const LOCAL_OFFSET_H = 5; // PKT, no DST
 
@@ -53,13 +54,26 @@ export function classifyService(openedAt?: string, scheduledAt?: string): Pick<P
     basis: [`Reactive 8x5 4h — booked ${fmtH(Math.max(0, lead))} after dispatch`] };
 }
 
-export function classifyDistance(city?: string): { distanceBand: DistanceBand; basis: string } {
-  const { cityDistance, defaultDistance } = getPricing().rules;
-  const key = city?.trim().toLowerCase();
-  const band = key ? cityDistance[key] : undefined;
-  if (band) return { distanceBand: band, basis: `Distance ${band} — site in ${city}` };
-  return { distanceBand: defaultDistance,
-    basis: `Distance ${defaultDistance} — default; ${city ? `${city} is` : "site city is"} not in the distance table` };
+/**
+ * Distance band from the nearest Multinet data centre. In order: a measured
+ * distance saved for the site ID, a band set by hand for the city, the
+ * estimate from the site's city, and finally the default.
+ */
+export function classifyDistance(src: { city?: string; siteId?: string; location?: string } = {}): { distanceBand: DistanceBand; basis: string } {
+  const r = getPricing().rules;
+  const siteKm = src.siteId ? r.siteDistanceKm?.[src.siteId.trim().toUpperCase()] : undefined;
+  if (siteKm != null) {
+    const band = bandForKm(siteKm);
+    return { distanceBand: band, basis: `Distance ${band} — ${siteKm} km from the nearest Multinet data centre (measured for site ${src.siteId})` };
+  }
+  const est = distanceFromCentres(src, r.dataCentres ?? [], r.roadFactor ?? 1.25);
+  const manual = est ? r.cityDistance[est.city.toLowerCase()] : src.city ? r.cityDistance[src.city.trim().toLowerCase()] : undefined;
+  if (manual) return { distanceBand: manual, basis: `Distance ${manual} — set by hand for ${est?.city ?? src.city}` };
+  if (est) {
+    return { distanceBand: est.band, basis: `Distance ${est.band} — ${est.city} is about ${est.km} km by road from ${est.centre.replace(/ \(.*\)$/, "")}` };
+  }
+  return { distanceBand: r.defaultDistance,
+    basis: `Distance ${r.defaultDistance} — default; ${src.city ? `${src.city} is` : "the site's city is"} not known, so the distance from Multinet could not be worked out` };
 }
 
 /** Billable visit length from minutes on site, using the configured limits. */
