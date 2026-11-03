@@ -53,6 +53,8 @@ export interface CycleSummary {
   total:       number;
   totalPkr:    number;
   usdToPkr:    number;
+  contract:    boolean;     // billed with the monthly charge; false = every visit at the rate card
+  visitsValue: number;      // what the visits add to the bill
   committed:   number;      // visits covered by the monthly charge
   done:        number;      // visits cleared in the cycle
   engineers:   { name: string; visits: number; minutes: number }[];
@@ -99,6 +101,7 @@ export function cycleSummary(tasks: Task[], cycle: Cycle, contract: Contract | n
   return {
     cycle, visits, inCity, interCity, mrc, extras, hotelNights, hotel, total,
     totalPkr: Math.round(total * usdToPkr), usdToPkr,
+    contract: !!k, visitsValue: extras,
     committed: quota.in_city + quota.intercity,
     done: visits.length,
     engineers: [...byEngineer].map(([name, v]) => ({ name, ...v })).sort((a, b) => b.visits - a.visits),
@@ -169,19 +172,24 @@ export function cycleBillCsv(s: CycleSummary): string {
     [`Billing cycle ${s.cycle.name}`, s.cycle.range],
     [],
     ["Item", "Work order", "Customer", "Engineer", "Area", "Cleared", "Service", "Visit length", "Rate card (USD)", "Billed (USD)", "Note"],
-    ["Monthly recurring charge", "", "", "", "", "", "", "", "", s.mrc, `Covers ${s.committed} visits`],
+    ...(s.contract ? [["Monthly recurring charge", "", "", "", "", "", "", "", "", s.mrc, `Covers ${s.committed} visits`]] : []),
     ...s.visits.map((x) => [
       "Visit", x.task.workOrder ?? x.task.id, x.task.endCustomer ?? x.task.customer, knownEngineer(x.task) ?? "Name not received yet",
       x.area === "in_city" ? "In-city" : "Intercity", fmtDate(x.cleared), serviceText(x.task), x.task.visitDuration,
-      x.rated, x.charge, `${x.included ? "Included in monthly charge" : "Additional visit"}${x.billed ? "" : " · price not yet confirmed"}`,
+      x.rated, x.charge, `${!s.contract ? "Rate card" : x.included ? "Included in monthly charge" : "Additional visit"}${x.billed ? "" : " · price not yet confirmed"}`,
     ]),
     ...s.visits.filter((x) => x.hotel > 0).map((x) => [
       "Hotel accommodation", x.task.workOrder ?? x.task.id, x.task.endCustomer ?? "", knownEngineer(x.task) ?? "", "", fmtDate(x.cleared), "", "",
       "", x.hotel, `${x.task.hotelNights} night(s)`,
     ]),
     [],
-    ["In-city visits", `${s.inCity.done} done`, `${s.inCity.committed} included`, `${s.inCity.extra} extra`, "", "", "", "", "", s.inCity.extraValue],
-    ["Intercity visits", `${s.interCity.done} done`, `${s.interCity.committed} included`, `${s.interCity.extra} extra`, "", "", "", "", "", s.interCity.extraValue],
+    ...(s.contract ? [
+      ["In-city visits", `${s.inCity.done} done`, `${s.inCity.committed} included`, `${s.inCity.extra} extra`, "", "", "", "", "", s.inCity.extraValue],
+      ["Intercity visits", `${s.interCity.done} done`, `${s.interCity.committed} included`, `${s.interCity.extra} extra`, "", "", "", "", "", s.interCity.extraValue],
+    ] : [
+      ["In-city visits", `${s.inCity.done}`, "", "", "", "", "", "", "", s.inCity.extraValue],
+      ["Intercity visits", `${s.interCity.done}`, "", "", "", "", "", "", "", s.interCity.extraValue],
+    ]),
     ["Total (USD)", "", "", "", "", "", "", "", "", s.total],
     [`Total (PKR at ${s.usdToPkr})`, "", "", "", "", "", "", "", "", s.totalPkr],
   ];

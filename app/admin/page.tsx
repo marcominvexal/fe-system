@@ -115,15 +115,24 @@ export default function DashboardPage() {
 
       {/* The four numbers that matter */}
       <section aria-label="This billing cycle" className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Figure label="Visits this cycle" value={<>{s.done}<span className="text-[20px] text-fg-faint"> of {s.committed}</span></>} tone="brand">
-          <Progress value={s.done} max={s.committed} />
-          <p className="mt-2">In-city {s.inCity.done} of {s.inCity.committed} · Intercity {s.interCity.done} of {s.interCity.committed}</p>
-          {s.inCity.extra + s.interCity.extra > 0 && (
-            <p className="font-bold text-fg">{plural(s.inCity.extra + s.interCity.extra, "extra visit")} beyond the commitment</p>
-          )}
-        </Figure>
+        {s.contract ? (
+          <Figure label="Visits this cycle" value={<>{s.done}<span className="text-[20px] text-fg-faint"> of {s.committed}</span></>} tone="brand">
+            <Progress value={s.done} max={s.committed} />
+            <p className="mt-2">In-city {s.inCity.done} of {s.inCity.committed} · Intercity {s.interCity.done} of {s.interCity.committed}</p>
+            {s.inCity.extra + s.interCity.extra > 0 && (
+              <p className="font-bold text-fg">{plural(s.inCity.extra + s.interCity.extra, "extra visit")} beyond the commitment</p>
+            )}
+          </Figure>
+        ) : (
+          <Figure label="Visits this cycle" value={s.done} tone="brand">
+            <p>In-city {s.inCity.done} · Intercity {s.interCity.done}</p>
+            <p>Average {fmtUSD(s.done ? Math.round(s.visitsValue / s.done) : 0)} a visit</p>
+          </Figure>
+        )}
         <Figure label="To bill so far" value={fmtUSD(s.total)}>
-          <p>Monthly charge {fmtUSD(s.mrc)}{s.extras > 0 && <> + extra visits {fmtUSD(s.extras)}</>}{s.hotel > 0 && <> + hotel {fmtUSD(s.hotel)}</>}</p>
+          {s.contract
+            ? <p>Monthly charge {fmtUSD(s.mrc)}{s.extras > 0 && <> + extra visits {fmtUSD(s.extras)}</>}{s.hotel > 0 && <> + hotel {fmtUSD(s.hotel)}</>}</p>
+            : <p>{plural(s.done, "visit")} at the rate card {fmtUSD(s.visitsValue)}{s.hotel > 0 && <> + hotel {fmtUSD(s.hotel)}</>}</p>}
           <p className="font-bold text-fg">{fmtPkr(s.totalPkr)}</p>
         </Figure>
         <Figure label="Jobs in progress" value={open.length}>
@@ -165,9 +174,10 @@ export default function DashboardPage() {
           <JobTable rows={recent.map((v) => v.task)} empty="No visits finished in this cycle yet."
             cols={[
               { head: "Finished", cell: (t) => fmtDate(visitOf(t)?.cleared) },
-              { head: "Billing", cell: (t) => {
+              { head: s.contract ? "Billing" : "Charge", cell: (t) => {
                 const v = visitOf(t);
                 if (!v) return null;
+                if (!s.contract) return <span className="font-bold text-fg">{fmtUSD(v.charge)}</span>;
                 return v.included ? <span className="text-fg-muted">Included</span> : <span className="font-bold text-fg">Extra · {fmtUSD(v.charge)}</span>;
               } },
             ]} />

@@ -66,8 +66,13 @@ function Report() {
         {/* Summary */}
         <section className="mt-5 grid grid-cols-3 gap-3">
           {[
-            ["Visits", `${s.done} of ${s.committed} included`, `In-city ${s.inCity.done}/${s.inCity.committed} · Intercity ${s.interCity.done}/${s.interCity.committed}`],
-            ["Extra visits", String(s.inCity.extra + s.interCity.extra), usd(s.extras)],
+            ...(s.contract ? [
+              ["Visits", `${s.done} of ${s.committed} included`, `In-city ${s.inCity.done}/${s.inCity.committed} · Intercity ${s.interCity.done}/${s.interCity.committed}`],
+              ["Extra visits", String(s.inCity.extra + s.interCity.extra), usd(s.extras)],
+            ] : [
+              ["Visits", String(s.done), `In-city ${s.inCity.done} · Intercity ${s.interCity.done}`],
+              ["Visits at rate card", usd(s.visitsValue), s.hotel ? `plus hotel ${usd(s.hotel)}` : "No hotel stays"],
+            ]),
             ["Amount to bill", usd(s.total), fmtPkr(s.totalPkr)],
           ].map(([l, v, f]) => (
             <div key={l} className="border-t-4 border-black bg-neutral-50 px-3 py-2.5">
@@ -92,7 +97,7 @@ function Report() {
                 <td className={td}><b>{v.task.workOrder ?? v.task.id}</b><br /><span className="text-neutral-600">{v.task.endCustomer ?? v.task.title} · {v.area === "in_city" ? "In-city" : "Intercity"} · {v.task.visitDuration}</span></td>
                 <td className={td}>{knownEngineer(v.task) ?? "Not received"}</td>
                 <td className={td}>{fmtDate(v.cleared)}</td>
-                <td className={td}>{v.included ? "Included" : "Extra visit"}{!v.billed && <><br /><span className="text-[#8a5300]">Price not confirmed</span></>}</td>
+                <td className={td}>{!s.contract ? `${v.task.maintenanceLevel === "Planned Activity" ? "Planned" : "Reactive"} ${v.task.serviceLevel}` : v.included ? "Included" : "Extra visit"}{!v.billed && <><br /><span className="text-[#8a5300]">Price not confirmed</span></>}</td>
                 <td className={`${td} text-right ${v.included ? "text-neutral-400" : "font-bold"}`}>{v.included ? "0" : usd(v.charge)}</td>
               </tr>
             ))}
@@ -126,7 +131,9 @@ function Report() {
         </table>
 
         <p className="mt-8 border-t border-neutral-200 pt-3 text-[10.5px] text-neutral-500">
-          Monthly charge {usd(cfg.contract.mrcUSD)} covers {s.committed} visits; additional visits are charged at the agreed rate card; overnight stays are {usd(cfg.contract.hotelPerNightUSD)} per night.
+          {s.contract
+            ? <>Monthly charge {usd(cfg.contract.mrcUSD)} covers {s.committed} visits; additional visits are charged at the agreed rate card; overnight stays are {usd(cfg.contract.hotelPerNightUSD)} per night.</>
+            : <>Each visit is charged at the agreed rate card by service level, distance from the nearest Multinet data centre and visit length; overnight stays are {usd(cfg.contract.hotelPerNightUSD)} per night.</>}
           FE Management System · Orange Business · Powered by Exponentia Global · Made by Invexal
         </p>
       </div>

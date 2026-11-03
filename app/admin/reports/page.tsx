@@ -51,9 +51,14 @@ export default function ReportsPage() {
       <section aria-label="Cycle summary" className="mb-6 grid gap-4 md:grid-cols-3">
         <div className="border-t-4 border-brand bg-panel px-5 py-4">
           <p className="text-[13px] font-bold">Visits</p>
-          <p className="num mt-2 text-[30px] font-bold leading-none">{s.done}<span className="text-[18px] text-fg-faint"> of {s.committed} included</span></p>
-          <p className="mt-2 text-[13px] text-fg-subtle">In-city {s.inCity.done} of {s.inCity.committed} · Intercity {s.interCity.done} of {s.interCity.committed}
-            {s.inCity.extra + s.interCity.extra > 0 && <> · <b className="text-fg">{s.inCity.extra + s.interCity.extra} extra</b></>}</p>
+          {s.contract ? <>
+            <p className="num mt-2 text-[30px] font-bold leading-none">{s.done}<span className="text-[18px] text-fg-faint"> of {s.committed} included</span></p>
+            <p className="mt-2 text-[13px] text-fg-subtle">In-city {s.inCity.done} of {s.inCity.committed} · Intercity {s.interCity.done} of {s.interCity.committed}
+              {s.inCity.extra + s.interCity.extra > 0 && <> · <b className="text-fg">{s.inCity.extra + s.interCity.extra} extra</b></>}</p>
+          </> : <>
+            <p className="num mt-2 text-[30px] font-bold leading-none">{s.done}</p>
+            <p className="mt-2 text-[13px] text-fg-subtle">In-city {s.inCity.done} · Intercity {s.interCity.done} · {fmtUSD(s.visitsValue)} at the rate card</p>
+          </>}
         </div>
         <div className="border-t-4 border-black bg-panel px-5 py-4">
           <p className="text-[13px] font-bold">Amount to bill</p>
@@ -68,7 +73,7 @@ export default function ReportsPage() {
       </section>
 
       {/* The bill */}
-      <Panel title="Bill for this cycle" subtitle="Monthly charge, then every visit Orange closed in the cycle, then hotel stays" className="mb-6" bodyClass="p-0"
+      <Panel title="Bill for this cycle" subtitle={s.contract ? "Monthly charge, then every visit Orange closed in the cycle, then hotel stays" : "Every visit Orange closed in the cycle at the rate card, then hotel stays"} className="mb-6" bodyClass="p-0"
         actions={<div className="flex flex-wrap gap-2">
           <Action onClick={() => downloadText(file("cycle-bill"), cycleBillCsv(s))}><Icons.Download size={14} />Excel</Action>
           <Action href={`/print/report?cycle=${cycle.key}`}><Icons.Print size={14} />Print / PDF</Action>
@@ -98,7 +103,9 @@ export default function ReportsPage() {
                   <td className="px-3 py-3">{knownEngineer(v.task) ?? <span className="text-warn-fg">Not received</span>}</td>
                   <td className="whitespace-nowrap px-3 py-3">{fmtDate(v.cleared)}</td>
                   <td className="px-3 py-3">
-                    {v.included ? <span className="text-fg-muted">Included</span> : <span className="font-bold">Extra visit</span>}
+                    {!s.contract
+                      ? <span className="text-fg-muted">{v.task.maintenanceLevel === "Planned Activity" ? "Planned" : "Reactive"} {v.task.serviceLevel} · {v.task.distanceBand}</span>
+                      : v.included ? <span className="text-fg-muted">Included</span> : <span className="font-bold">Extra visit</span>}
                     {!v.billed && <p className="text-[12px] text-warn-fg">Price not confirmed yet</p>}
                   </td>
                   <td className={cx("num px-5 py-3 text-right", v.included ? "text-fg-faint" : "font-bold")}>

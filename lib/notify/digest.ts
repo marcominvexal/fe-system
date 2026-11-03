@@ -32,7 +32,7 @@ export interface DigestData {
   last24: { emails: number; newJobs: Task[]; cleared: Task[]; billedValue: number };
   attention: { label: string; count: number; href: string }[];
   findings: { title: string; severity: string; href?: string; amount?: number }[];
-  cycle: { name: string; range: string; done: number; committed: number; extra: number; total: number; totalPkr: number };
+  cycle: { name: string; range: string; done: number; committed: number; extra: number; total: number; totalPkr: number; contract: boolean };
   money: { readyToInvoice: number; readyCount: number; outstanding: number; overdue: number; overdueCount: number; owedToPartners: number };
   sync: { lastOk: string | null; stale: boolean; failures: number; lastError: string | null };
 }
@@ -77,7 +77,7 @@ export async function buildDigest(now = Date.now()): Promise<DigestData> {
       const k = getPricing().contract;
       const c = cycleFor(now, k?.cycleStartDay ?? 25);
       const cs = cycleSummary(tasks, c, k ?? null);
-      return { name: c.name, range: c.range, done: cs.done, committed: cs.committed, extra: cs.inCity.extra + cs.interCity.extra, total: cs.total, totalPkr: cs.totalPkr };
+      return { name: c.name, range: c.range, done: cs.done, committed: cs.committed, extra: cs.inCity.extra + cs.interCity.extra, total: cs.total, totalPkr: cs.totalPkr, contract: cs.contract };
     })(),
     money: {
       readyToInvoice: ready.reduce((s, t) => s + (t.customerChargeUSD ?? 0), 0),
@@ -150,7 +150,7 @@ export function digestHtml(d: DigestData): string {
 
   ${h(`Billing cycle · ${esc(d.cycle.name)} (${esc(d.cycle.range)})`)}
   <tr><td><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
-    ${row("Visits so far", `${d.cycle.done} of ${d.cycle.committed} included${d.cycle.extra ? ` · ${d.cycle.extra} extra` : ""}`)}
+    ${row("Visits so far", d.cycle.contract ? `${d.cycle.done} of ${d.cycle.committed} included${d.cycle.extra ? ` · ${d.cycle.extra} extra` : ""}` : String(d.cycle.done))}
     ${row("To bill so far", `${usd(d.cycle.total)} · PKR ${d.cycle.totalPkr.toLocaleString("en-US")}`)}
   </table></td></tr>
 
@@ -178,7 +178,7 @@ export function digestText(d: DigestData): string {
     `Last 24 hours: ${d.last24.emails} emails read, ${d.last24.newJobs.length} new jobs, ${d.last24.cleared.length} visits cleared, ${usd(d.last24.billedValue)} billed.`, "",
     "Needs attention:", ...d.attention.map((x) => `  ${x.count}  ${x.label}`),
     ...d.findings.map((f) => `  - ${f.title}${f.amount ? ` (${usd(f.amount)})` : ""}`), "",
-    `Billing cycle ${d.cycle.name} (${d.cycle.range}): ${d.cycle.done} of ${d.cycle.committed} visits${d.cycle.extra ? `, ${d.cycle.extra} extra` : ""}; to bill so far ${usd(d.cycle.total)} (PKR ${d.cycle.totalPkr.toLocaleString("en-US")})`,
+    `Billing cycle ${d.cycle.name} (${d.cycle.range}): ${d.cycle.contract ? `${d.cycle.done} of ${d.cycle.committed} visits${d.cycle.extra ? `, ${d.cycle.extra} extra` : ""}` : `${d.cycle.done} visits`}; to bill so far ${usd(d.cycle.total)} (PKR ${d.cycle.totalPkr.toLocaleString("en-US")})`,
     `Visits not yet on an invoice: ${d.money.readyCount} (${usd(d.money.readyToInvoice)} at rate card)`,
     `Invoiced, not yet paid: ${usd(d.money.outstanding)}`,
     `Overdue: ${usd(d.money.overdue)} (${d.money.overdueCount} invoices)`,
