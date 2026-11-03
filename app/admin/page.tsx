@@ -9,6 +9,7 @@ import { useShell, type JobView } from "@/components/shell";
 import { Icons } from "@/components/icons";
 import { Panel, cx } from "@/components/ui";
 import { MailBanner, MailButtons, useMailActions } from "@/components/mail";
+import { WorkMap } from "@/components/WorkMap";
 import { getPricing } from "@/lib/pricing";
 import { cycleFor } from "@/lib/cycle";
 import { cycleSummary, fmtDate, fmtDateTime, fmtPkr, plainStatus } from "@/lib/report";
@@ -141,6 +142,9 @@ export default function DashboardPage() {
           <p className="flex items-center gap-2 px-5 py-5 text-[15px] text-fg"><Icons.Check size={18} className="text-ok-fg" />All caught up. New Orange emails are read automatically throughout the day.</p>
         )}
       </Panel>
+
+      {/* Map of sites and data centres */}
+      <WorkMap tasks={tasks} cycle={cycle} centres={getPricing().rules.dataCentres ?? []} roadFactor={getPricing().rules.roadFactor ?? 1.25} />
 
       <div className="grid gap-6 2xl:grid-cols-2">
         <Panel title="Jobs in progress" subtitle="Soonest first"

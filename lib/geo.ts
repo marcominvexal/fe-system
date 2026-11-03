@@ -128,3 +128,19 @@ export function distanceFromCentres(
   const km = Math.round(nearest.km);
   return { city: city.name, centre: nearest.c.name, km, band: bandForKm(km) };
 }
+
+/**
+ * Where to draw a site on a map: its city, nudged by a small fixed offset
+ * (a few km, derived from the site ID) so sites in one city don't overlap.
+ * Positions are city-level, not street-level.
+ */
+export function placeSite(src: { city?: string; siteId?: string; location?: string }): { city: string; lat: number; lng: number } | null {
+  const city = cityInText(src.city) ?? cityInSiteId(src.siteId) ?? cityInText(src.location);
+  if (!city) return null;
+  const key = (src.siteId ?? src.location ?? city.name).toUpperCase();
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 16777619);
+  const angle = ((h >>> 0) % 360) * (Math.PI / 180);
+  const r = 0.02 + (((h >>> 9) % 100) / 100) * 0.03; // about 2–5 km
+  return { city: city.name, lat: city.lat + r * Math.sin(angle), lng: city.lng + r * Math.cos(angle) };
+}
