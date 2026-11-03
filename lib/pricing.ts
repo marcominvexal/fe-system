@@ -29,9 +29,25 @@ export interface Issuer {
   bankDetails: string;  // payment instructions printed on invoices
 }
 
+/**
+ * The monthly agreement with Orange: a fixed monthly recurring charge (MRC)
+ * covers a minimum commitment of visits; visits beyond it are billed at the
+ * rate card, and overnight stays add a hotel charge per night.
+ */
+export interface Contract {
+  enabled:          boolean;
+  mrcUSD:           number;                 // monthly recurring charge
+  includedInCity:   number;                 // visits within 50 km covered by the MRC
+  includedInterCity: number;                // visits beyond 50 km covered by the MRC
+  hotelPerNightUSD: number;                 // overnight stay, per night
+  usdToPkr:         number;                 // exchange rate shown on invoices and reports
+  cycleStartDay:    number;                 // billing cycle runs from this day to the day before, next month
+}
+
 export interface PricingConfig {
   currency:   "USD";
   issuer:     Issuer;
+  contract:   Contract;
   fePayPct:   number;                       // engineer payment as share of charge
   paymentTermsDays: number;                 // invoice due date
   table:      RateTable;
@@ -41,6 +57,16 @@ export interface PricingConfig {
 export const DEFAULT_PRICING: PricingConfig = {
   currency: "USD",
   issuer: { name: "", address: "", taxId: "", bankDetails: "" },
+  // From the signed commercial sheet: USD 2,985 (PKR 835,800) for 20 visits
+  contract: {
+    enabled: true,
+    mrcUSD: 2985,
+    includedInCity: 16,
+    includedInterCity: 4,
+    hotelPerNightUSD: 125,
+    usdToPkr: 280,
+    cycleStartDay: 25,
+  },
   fePayPct: 0.30,
   paymentTermsDays: 30,
   table: {
@@ -89,6 +115,15 @@ export function validatePricing(c: PricingConfig): string[] {
   for (const d of DISTANCES) for (const k of CATEGORIES) for (const v of DURATIONS) {
     const n = c.table?.[d]?.[k]?.[v];
     if (!(typeof n === "number" && n >= 0 && isFinite(n))) errs.push(`Rate for ${d} · ${k} · ${v} must be a positive number.`);
+  }
+  const k = c.contract;
+  if (k) {
+    if (!(k.mrcUSD >= 0)) errs.push("Monthly charge must be 0 or more.");
+    if (!(Number.isInteger(k.includedInCity) && k.includedInCity >= 0)) errs.push("In-city visits included must be a whole number.");
+    if (!(Number.isInteger(k.includedInterCity) && k.includedInterCity >= 0)) errs.push("Intercity visits included must be a whole number.");
+    if (!(k.hotelPerNightUSD >= 0)) errs.push("Hotel charge must be 0 or more.");
+    if (!(k.usdToPkr > 0)) errs.push("Exchange rate must be more than 0.");
+    if (!(Number.isInteger(k.cycleStartDay) && k.cycleStartDay >= 1 && k.cycleStartDay <= 28)) errs.push("Billing cycle must start on a day from 1 to 28.");
   }
   const r = c.rules;
   if (!(r.plannedLeadHours > 0)) errs.push("Planned threshold must be more than 0 hours.");

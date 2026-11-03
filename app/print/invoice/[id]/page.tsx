@@ -75,7 +75,8 @@ export default function InvoicePrint() {
             <p className="mt-1 font-medium text-neutral-900">{inv.customer}</p>
           </div>
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-right">
-            <dt className="text-neutral-500">Period</dt><dd>{month(inv.periodStart)}</dd>
+            <dt className="text-neutral-500">Billing cycle</dt><dd>{inv.cycle ?? month(inv.periodStart)}</dd>
+            <dt className="text-neutral-500">Period</dt><dd>{day(inv.periodStart)} – {day(inv.periodEnd)}</dd>
             <dt className="text-neutral-500">Issued</dt><dd>{day(inv.sentAt ?? inv.createdAt)}</dd>
             {inv.dueAt && <><dt className="text-neutral-500">Due</dt><dd>{day(inv.dueAt)}</dd></>}
             {inv.kind === "credit" && d.original && <><dt className="text-neutral-500">Credits</dt><dd className="font-mono">{d.original.number}</dd></>}
@@ -89,6 +90,7 @@ export default function InvoicePrint() {
             <tr className="border-y border-neutral-300 text-left text-[11px] uppercase tracking-wider text-neutral-500">
               <th className="py-2 pr-3 font-semibold">Work order</th>
               <th className="py-2 pr-3 font-semibold">Description</th>
+              <th className="py-2 pr-3 font-semibold">Engineer</th>
               <th className="py-2 pr-3 font-semibold">Cleared</th>
               <th className="py-2 text-right font-semibold">Amount</th>
             </tr>
@@ -97,19 +99,24 @@ export default function InvoicePrint() {
             {inv.lines.map((l) => (
               <tr key={l.id} className="border-b border-neutral-200 align-top">
                 <td className="py-2 pr-3 font-mono text-neutral-900">{l.workOrder ?? "—"}</td>
-                <td className="py-2 pr-3">{l.kind === "visit" ? l.description.replace(/^WO [^·]+ · /, "") : l.description}</td>
+                <td className="py-2 pr-3">{l.kind === "visit" ? l.description.replace(/^WO [^·]+ · /, "").replace(/ · (included in monthly charge|additional visit)$/, "") : l.description}
+                  {l.kind === "visit" && l.included !== undefined && <span className="block text-[11px] text-neutral-500">{l.included ? "Included in monthly charge" : "Additional visit at rate card"}</span>}</td>
+                <td className="py-2 pr-3 text-neutral-700">{l.engineer ?? ""}</td>
                 <td className="whitespace-nowrap py-2 pr-3 text-neutral-600">{l.date ? day(l.date) : ""}</td>
-                <td className="whitespace-nowrap py-2 text-right tabular-nums">{money(l.amount)}</td>
+                <td className={`whitespace-nowrap py-2 text-right tabular-nums ${l.included ? "text-neutral-400" : ""}`}>{money(l.amount)}</td>
               </tr>
             ))}
           </tbody>
         </table>
         <div className="ml-auto mt-4 w-72 space-y-1 tabular-nums">
-          {inv.kind === "invoice" && <div className="flex justify-between"><span className="text-neutral-500">Visits</span><span>{money(inv.subtotal)}</span></div>}
+          {inv.lines.some((l) => l.kind === "mrc") && <div className="flex justify-between"><span className="text-neutral-500">Monthly charge</span><span>{money(inv.lines.filter((l) => l.kind === "mrc").reduce((a, l) => a + l.amount, 0))}</span></div>}
+          {inv.kind === "invoice" && <div className="flex justify-between"><span className="text-neutral-500">{inv.lines.some((l) => l.kind === "mrc") ? "Extra visits" : "Visits"}</span><span>{money(inv.lines.filter((l) => l.kind === "visit").reduce((a, l) => a + l.amount, 0))}</span></div>}
+          {inv.lines.some((l) => l.kind === "hotel") && <div className="flex justify-between"><span className="text-neutral-500">Hotel accommodation</span><span>{money(inv.lines.filter((l) => l.kind === "hotel").reduce((a, l) => a + l.amount, 0))}</span></div>}
           {inv.adjustments !== 0 && <div className="flex justify-between"><span className="text-neutral-500">Adjustments</span><span>{money(inv.adjustments)}</span></div>}
           <div className="flex justify-between border-t border-neutral-300 pt-1 text-[15px] font-semibold text-neutral-900"><span>Total {cfg.currency}</span><span>{money(inv.total)}</span></div>
           {credited > 0 && <div className="flex justify-between text-neutral-500"><span>Less credit notes</span><span>{money(-credited)}</span></div>}
           {credited > 0 && <div className="flex justify-between font-semibold text-neutral-900"><span>Balance</span><span>{money(inv.total - credited)}</span></div>}
+          {inv.usdToPkr && <div className="flex justify-between text-neutral-600"><span>In PKR at {inv.usdToPkr}</span><span>PKR {Math.round((inv.total - credited) * inv.usdToPkr).toLocaleString("en-US")}</span></div>}
         </div>
 
         {issuer.bankDetails && (

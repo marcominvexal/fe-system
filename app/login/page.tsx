@@ -109,7 +109,7 @@ function LoginForm() {
               </div>
 
               {error && (
-                <p role="alert" className="mt-4 rounded-md border border-crit/25 bg-crit/[0.07] px-3 py-2 text-xs text-[#f08a84]">{error}</p>
+                <p role="alert" className="mt-4 rounded-md border border-crit/25 bg-crit/[0.07] px-3 py-2 text-xs text-crit-fg">{error}</p>
               )}
 
               <Button type="submit" variant="primary" disabled={busy} className={cx("mt-5 w-full justify-center")}>
@@ -119,8 +119,8 @@ function LoginForm() {
           )}
         </form>
         <div className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
-          <PoweredBy />
-          <MadeBy />
+          <PoweredBy onLight />
+          <MadeBy onLight />
         </div>
       </div>
     </div>

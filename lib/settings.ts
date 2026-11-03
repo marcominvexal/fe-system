@@ -16,6 +16,7 @@ function merge(saved: Partial<PricingConfig> | null): PricingConfig {
     ...saved,
     table: { ...DEFAULT_PRICING.table, ...saved.table },
     issuer: { ...DEFAULT_PRICING.issuer, ...saved.issuer },
+    contract: { ...DEFAULT_PRICING.contract, ...saved.contract },
     rules: {
       ...DEFAULT_PRICING.rules,
       ...saved.rules,

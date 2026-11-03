@@ -11,9 +11,9 @@ const fmtTime = (iso: string) =>
   new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 
 const DOT: Record<StageState, string> = {
-  done:      "bg-brand text-[#1a0d03] ring-brand",
+  done:      "bg-brand text-black ring-brand",
   current:   "bg-panel text-brand-soft ring-brand",
-  late:      "bg-panel text-[#f08a84] ring-crit",
+  late:      "bg-panel text-crit-fg ring-crit",
   upcoming:  "bg-panel text-fg-faint ring-line-strong",
   skipped:   "bg-panel text-fg-faint ring-line-strong",
   cancelled: "bg-panel text-fg-faint ring-line",
@@ -46,7 +46,7 @@ export function StageTracker({ task, size = "full" }: { task: Task; size?: "full
             </div>
           ))}
         </div>
-        <span className={cx("whitespace-nowrap text-2xs", current?.state === "late" ? "text-[#f08a84]" : "text-fg-subtle")}>
+        <span className={cx("whitespace-nowrap text-2xs", current?.state === "late" ? "text-crit-fg" : "text-fg-subtle")}>
           {task.status === "cancelled" ? "Cancelled" : current ? current.label : "Complete"}
         </span>
       </div>
@@ -67,7 +67,7 @@ export function StageTracker({ task, size = "full" }: { task: Task; size?: "full
               <StageIcon s={s} size={15} />
             </span>
             <p className={cx("mt-2.5 text-[13px] font-medium",
-              s.state === "done" ? "text-fg" : s.state === "late" ? "text-[#f08a84]" : s.state === "current" ? "text-brand-soft" : "text-fg-subtle")}>
+              s.state === "done" ? "text-fg" : s.state === "late" ? "text-crit-fg" : s.state === "current" ? "text-brand-soft" : "text-fg-subtle")}>
               {s.label}
             </p>
             <p className="num mt-0.5 text-2xs text-fg-subtle">{s.at ? fmtWhen(s.at) : s.state === "skipped" ? "—" : s.state === "cancelled" ? "Cancelled" : "Pending"}</p>
@@ -80,11 +80,11 @@ export function StageTracker({ task, size = "full" }: { task: Task; size?: "full
 }
 
 const KIND_ICON: Record<EventKind, { icon: React.ReactNode; cls: string; label: string }> = {
-  email:   { icon: <Icons.Mail size={13} />,    cls: "bg-info/12 text-[#8dbaf5]",     label: "Email" },
+  email:   { icon: <Icons.Mail size={13} />,    cls: "bg-info/12 text-info-fg",     label: "Email" },
   site:    { icon: <Icons.MapPin size={13} />,  cls: "bg-brand/12 text-brand-soft",   label: "On site" },
-  billing: { icon: <Icons.Invoice size={13} />, cls: "bg-ok/12 text-[#7bcfa2]",       label: "Billing" },
-  plan:    { icon: <Icons.Calendar size={13} />, cls: "bg-white/[0.05] text-fg-muted", label: "Plan" },
-  cancel:  { icon: <Icons.X size={13} />,       cls: "bg-crit/12 text-[#f08a84]",     label: "Cancelled" },
+  billing: { icon: <Icons.Invoice size={13} />, cls: "bg-ok/12 text-ok-fg",       label: "Billing" },
+  plan:    { icon: <Icons.Calendar size={13} />, cls: "bg-black/[0.04] text-fg-muted", label: "Plan" },
+  cancel:  { icon: <Icons.X size={13} />,       cls: "bg-crit/12 text-crit-fg",     label: "Cancelled" },
 };
 
 /** Everything that happened to the job, oldest first, grouped by day. */

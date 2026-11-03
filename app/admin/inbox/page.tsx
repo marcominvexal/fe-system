@@ -130,7 +130,7 @@ export default function InboxPage() {
 
       {data && !conn?.configured && (
         <div className="mb-4 flex items-start gap-3 rounded-xl border border-warn/30 bg-warn/[0.05] px-5 py-4">
-          <Icons.Alert size={16} className="mt-0.5 shrink-0 text-[#f0bd6d]" />
+          <Icons.Alert size={16} className="mt-0.5 shrink-0 text-warn-fg" />
           <div className="space-y-1 text-[13px] text-fg-muted">
             <p className="font-medium text-fg">Mailbox not connected</p>
             <p>Add <code className="rounded bg-raised px-1 font-mono text-xs text-fg">MAIL_USER</code> and <code className="rounded bg-raised px-1 font-mono text-xs text-fg">MAIL_APP_PASSWORD</code> to the environment and restart the app. For Gmail, turn on 2-Step Verification, create an app password and enable IMAP.</p>
@@ -149,7 +149,7 @@ export default function InboxPage() {
         <Stat label="Updates applied" value={count("updated")} foot="Photos and closures" />
         <Stat label="Ignored" value={count("ignored")} foot="Not a work order, or untrusted sender" />
         <Stat label="Last run" value={lastRun ? timeAgo(new Date(lastRun.at).getTime()) : "—"}
-          foot={lastRun ? (lastRun.error ? <span className="text-[#f08a84]">Failed</span> : `${lastRun.scanned} email${lastRun.scanned === 1 ? "" : "s"} read`) : "No runs yet"} />
+          foot={lastRun ? (lastRun.error ? <span className="text-crit-fg">Failed</span> : `${lastRun.scanned} email${lastRun.scanned === 1 ? "" : "s"} read`) : "No runs yet"} />
       </StatStrip>
 
       <div className="grid gap-4 min-[1800px]:grid-cols-12">
@@ -198,7 +198,7 @@ export default function InboxPage() {
                       {r.error ? "Sync failed" : r.source === "sync" ? "Inbox sync" : "File import"}
                     </p>
                     <p className="text-2xs text-fg-subtle">
-                      {r.error ? <span className="text-[#f08a84]">{r.error}</span>
+                      {r.error ? <span className="text-crit-fg">{r.error}</span>
                         : [`${r.scanned} read`, r.created && `${r.created} new`, r.updated && `${r.updated} updated`, r.duplicates && `${r.duplicates} duplicate`, r.ignored && `${r.ignored} ignored`]
                             .filter(Boolean).join(" · ")}
                     </p>

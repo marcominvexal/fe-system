@@ -50,7 +50,7 @@ function FindingRow({ f, onDismiss }: { f: Finding; onDismiss: (f: Finding) => v
       <div className="flex shrink-0 items-center gap-2">
         {f.amount != null && f.amount > 0 && <span className="num w-20 text-right text-[13px] font-semibold text-fg">{fmtUSD(f.amount)}</span>}
         {f.href && <Link href={f.href} className="inline-flex h-7 items-center gap-1 rounded-lg bg-raised px-2.5 text-xs font-medium text-fg ring-1 ring-inset ring-line-strong hover:bg-hover">{f.action ?? "Open"}<Icons.ChevronR size={12} /></Link>}
-        <button onClick={() => onDismiss(f)} className="h-7 rounded-lg px-2 text-xs text-fg-subtle hover:bg-white/5 hover:text-fg">Dismiss</button>
+        <button onClick={() => onDismiss(f)} className="h-7 rounded-lg px-2 text-xs text-fg-subtle hover:bg-black/[0.04] hover:text-fg">Dismiss</button>
       </div>
     </li>
   );
@@ -122,7 +122,7 @@ function Reconcile({ tasks }: { tasks: Task[] }) {
           </div>
         </div>
         <p className="mt-2 text-2xs text-fg-subtle">{ours.length} billed visit{ours.length === 1 ? "" : "s"} on our side for this month. Excel files: save as CSV first.</p>
-        {parsed?.error && <p role="alert" className="mt-3 text-xs text-[#f08a84]">{parsed.error}</p>}
+        {parsed?.error && <p role="alert" className="mt-3 text-xs text-crit-fg">{parsed.error}</p>}
         {parsed?.columns && (
           <p className="mt-3 text-xs text-fg-subtle">
             Read {parsed.rows.length} line{parsed.rows.length === 1 ? "" : "s"} using columns “{parsed.columns.workOrder}” and “{parsed.columns.amount}”{parsed.skipped ? `; skipped ${parsed.skipped} row(s) without a work order or amount (e.g. totals)` : ""}.
@@ -159,7 +159,7 @@ function Reconcile({ tasks }: { tasks: Task[] }) {
                 </thead>
                 <tbody>
                   {shown.map((l) => (
-                    <tr key={l.workOrder + l.status} className="hover:bg-white/[0.025]">
+                    <tr key={l.workOrder + l.status} className="hover:bg-black/[0.02]">
                       <td className="border-b border-line/70 px-3 py-2.5 pl-5">
                         {l.taskId ? <Link href={`/admin/jobs/${l.taskId}`} className="font-mono font-semibold text-fg hover:text-brand-soft">{l.workOrder}</Link> : <span className="font-mono font-semibold text-fg">{l.workOrder}</span>}
                         {l.invoiceNumber && <p className="text-2xs text-fg-subtle">On {l.invoiceNumber}</p>}
@@ -167,7 +167,7 @@ function Reconcile({ tasks }: { tasks: Task[] }) {
                       <td className="border-b border-line/70 px-3 py-2.5"><Badge tone={MATCH[l.status].tone}>{MATCH[l.status].label}</Badge></td>
                       <td className="num border-b border-line/70 px-3 py-2.5 text-right text-fg">{l.theirs != null ? fmtUSD(l.theirs) : "—"}</td>
                       <td className="num border-b border-line/70 px-3 py-2.5 text-right text-fg">{l.ours != null ? fmtUSD(l.ours) : "—"}</td>
-                      <td className={cx("num border-b border-line/70 px-3 py-2.5 pr-5 text-right font-medium", (l.difference ?? 0) > 0 ? "text-[#7bcfa2]" : (l.difference ?? 0) < 0 ? "text-[#f08a84]" : "text-fg-subtle")}>
+                      <td className={cx("num border-b border-line/70 px-3 py-2.5 pr-5 text-right font-medium", (l.difference ?? 0) > 0 ? "text-ok-fg" : (l.difference ?? 0) < 0 ? "text-crit-fg" : "text-fg-subtle")}>
                         {l.difference != null && l.difference !== 0 ? `${l.difference > 0 ? "+" : "−"}${fmtUSD(Math.abs(l.difference))}` : "—"}
                       </td>
                     </tr>
@@ -217,7 +217,7 @@ export default function InsightsPage() {
 
   return (
     <div>
-      <PageHeader title="Insights" subtitle="Money at risk, unusual work orders, prices to check, and Orange's statement compared with your billing" />
+      <PageHeader title="Checks" subtitle="Money at risk, unusual work orders, prices to check, and Orange's statement compared with your billing" />
 
       <StatStrip>
         <Stat label="Revenue at risk" value={fmtUSD(data?.summary.atRisk ?? 0)} foot="Leakage, anomalies and unsure prices" accent={(data?.summary.atRisk ?? 0) > 0} />
@@ -240,7 +240,7 @@ export default function InsightsPage() {
           {data === null && <p className="py-10 text-center text-xs text-fg-subtle">Checking work orders, emails and invoices…</p>}
           {data && !findings.length && (
             <div className="rounded-xl border border-line bg-panel px-6 py-12 text-center">
-              <Icons.Check size={22} className="mx-auto text-[#7bcfa2]" />
+              <Icons.Check size={22} className="mx-auto text-ok-fg" />
               <p className="mt-2 text-[14px] font-medium text-fg">Nothing needs attention</p>
               <p className="mt-1 text-xs text-fg-subtle">Every cleared visit is billed, prices are confident, and nothing is overdue.</p>
             </div>
@@ -279,7 +279,7 @@ export default function InsightsPage() {
           <p className="text-xs text-fg-subtle">Billed or cleared visits whose price the system is less than 70% sure about. Confirm the price if it is right, or adjust it before it goes on an invoice.</p>
           {!review.length && (
             <div className="rounded-xl border border-line bg-panel px-6 py-12 text-center">
-              <Icons.Check size={22} className="mx-auto text-[#7bcfa2]" />
+              <Icons.Check size={22} className="mx-auto text-ok-fg" />
               <p className="mt-2 text-[14px] font-medium text-fg">No prices to review</p>
               <p className="mt-1 text-xs text-fg-subtle">Every billed visit not yet invoiced was priced with high confidence.</p>
             </div>
@@ -301,7 +301,7 @@ export default function InsightsPage() {
                 </div>
                 <ul className="mt-3 space-y-1">
                   {c.reasons.map((r) => (
-                    <li key={r.text} className="flex gap-2 text-xs text-fg-muted"><span className="num w-8 shrink-0 text-right text-2xs text-[#f08a84]">−{r.points}</span>{r.text}</li>
+                    <li key={r.text} className="flex gap-2 text-xs text-fg-muted"><span className="num w-8 shrink-0 text-right text-2xs text-crit-fg">−{r.points}</span>{r.text}</li>
                   ))}
                 </ul>
                 <div className="mt-4 flex flex-wrap gap-2">

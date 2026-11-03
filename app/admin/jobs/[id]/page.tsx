@@ -4,10 +4,12 @@ import Link from "next/link";
 import { useState } from "react";
 import { useParams } from "next/navigation";
 import type { Task } from "@/lib/store";
-import { fmtDate } from "@/lib/store";
+import { fmtDate, knownEngineer } from "@/lib/store";
+import { useUser } from "@/lib/userContext";
+import { getPricing } from "@/lib/pricing";
 import { useStore } from "@/lib/storeContext";
 import { Icons } from "@/components/icons";
-import { Badge, Button, Panel, cx, type Tone } from "@/components/ui";
+import { Badge, Button, Panel, cx, inputCls, labelCls, type Tone } from "@/components/ui";
 import { StageTracker, JobTimeline } from "@/components/workflow";
 import { JobHistory } from "@/components/history";
 import { ConfidenceReasons, RepriceModal, confirmPricing } from "@/components/pricingReview";
@@ -24,6 +26,70 @@ function Row({ label, children }: { label: string; children?: React.ReactNode })
       <dt className="text-fg-subtle">{label}</dt>
       <dd className="min-w-0 break-words text-fg">{children}</dd>
     </div>
+  );
+}
+
+
+/** Who did the visit, and any overnight stay to bill. Editable when the emails didn't say. */
+function EngineerPanel({ task, onSaved }: { task: Task; onSaved: () => void }) {
+  const { canEdit } = useUser();
+  const name = knownEngineer(task);
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(name ?? "");
+  const [nights, setNights] = useState(String(task.hotelNights ?? 0));
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const rate = getPricing().contract?.hotelPerNightUSD ?? 125;
+
+  const send = async (body: object) => {
+    setBusy(true); setError("");
+    const r = await fetch("/api/tasks", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: task.id, ...body }) });
+    const d = await r.json().catch(() => ({}));
+    setBusy(false);
+    if (!r.ok) { setError(d.error ?? "Could not save."); return false; }
+    onSaved();
+    return true;
+  };
+
+  return (
+    <Panel title="Engineer">
+      {editing ? (
+        <form onSubmit={async (e) => { e.preventDefault(); if (await send({ action: "set_engineer", engineerName: value })) setEditing(false); }} className="flex gap-2">
+          <input autoFocus value={value} onChange={(e) => setValue(e.target.value)} placeholder="Full name, e.g. Waqar Islam" aria-label="Engineer name" className={inputCls} />
+          <Button type="submit" variant="primary" disabled={busy || !value.trim()}>Save</Button>
+          <Button type="button" variant="ghost" onClick={() => { setEditing(false); setValue(name ?? ""); }}>Cancel</Button>
+        </form>
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            {name
+              ? <p className="text-[18px] font-bold text-fg">{name}</p>
+              : <p className="text-[15px] font-bold text-warn-fg">Name not received yet</p>}
+            <p className="mt-0.5 text-xs text-fg-subtle">
+              {task.engineerNameSource === "manual" ? "Entered by hand" : name ? "Read from Orange's emails" : "Orange's emails haven't named the engineer. Add it so it shows on reports and invoices."}
+              {task.asp ? ` · Partner ${task.asp.replace(/^ASP_[A-Z]{2}\s*/, "")}` : ""}
+            </p>
+          </div>
+          {canEdit && <Button size="sm" onClick={() => setEditing(true)}><Icons.Edit size={13} />{name ? "Change" : "Add name"}</Button>}
+        </div>
+      )}
+
+      <div className="mt-4 flex flex-wrap items-end gap-2 border-t border-line pt-4">
+        <div>
+          <label htmlFor="hotel-nights" className={labelCls}>Hotel nights</label>
+          <input id="hotel-nights" type="number" min={0} max={60} step={1} value={nights} onChange={(e) => setNights(e.target.value)}
+            disabled={!canEdit || !!task.invoiceId} className={cx(inputCls, "w-24 num")} />
+        </div>
+        {canEdit && !task.invoiceId && String(task.hotelNights ?? 0) !== nights && (
+          <Button onClick={() => send({ action: "set_hotel_nights", hotelNights: Number(nights) })} disabled={busy}>Save</Button>
+        )}
+        <p className="pb-2 text-xs text-fg-subtle">
+          {(task.hotelNights ?? 0) > 0 ? <>Adds <b className="text-fg">{fmtUSD((task.hotelNights ?? 0) * rate)}</b> to the bill ({fmtUSD(rate)} a night)</> : <>If the engineer stayed overnight: {fmtUSD(rate)} a night</>}
+          {task.invoiceId ? " · already invoiced" : ""}
+        </p>
+      </div>
+      {error && <p role="alert" className="mt-2 text-xs text-crit-fg">{error}</p>}
+    </Panel>
   );
 }
 
@@ -73,6 +139,9 @@ export default function JobPage() {
           </div>
           <p className="mt-1 text-[14px] text-fg-muted">{task.title}</p>
           <p className="mt-0.5 text-xs text-fg-subtle">{[task.endCustomer, task.siteId, task.id].filter(Boolean).join(" · ")}</p>
+          <p className="mt-1.5 text-[13px] text-fg">Engineer: {knownEngineer(task)
+            ? <b>{knownEngineer(task)}</b>
+            : <span className="font-bold text-warn-fg">name not received yet</span>}</p>
         </div>
         <div className="text-right">
           <p className="text-2xs font-medium uppercase tracking-[0.07em] text-fg-subtle">{billed ? "Billed" : "Estimated"}</p>
@@ -92,17 +161,18 @@ export default function JobPage() {
             <JobTimeline task={task} />
           </Panel>
           <Panel title="Change history" subtitle="Every change to this work order, who or what made it, and why">
-            <JobHistory taskId={task.id} version={JSON.stringify([task.status, task.emailLog?.length, task.customerChargeUSD, task.cancelledAt])} />
+            <JobHistory taskId={task.id} version={JSON.stringify([task.status, task.emailLog?.length, task.customerChargeUSD, task.cancelledAt, task.engineerName, task.hotelNights])} />
           </Panel>
         </div>
 
         <div className="min-w-0 space-y-4 lg:col-span-5">
+          <EngineerPanel key={`${task.engineerName}-${task.hotelNights}`} task={task} onSaved={refresh} />
           <Panel title="Billing" subtitle={billed ? "Locked when Orange cleared the visit" : "Calculated from the pricing rules; final on closure"}>
             <div className="grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-line bg-line">
               {[
                 { l: "Charge", v: task.customerChargeUSD ?? value, c: "text-fg" },
                 { l: "FE pay", v: task.engineerPaymentUSD, c: "text-fg-muted" },
-                { l: "Profit", v: task.profit, c: "text-[#7bcfa2]" },
+                { l: "Profit", v: task.profit, c: "text-ok-fg" },
               ].map((b) => (
                 <div key={b.l} className="bg-panel px-3 py-2.5">
                   <p className="text-2xs text-fg-subtle">{b.l}</p>
@@ -143,7 +213,7 @@ export default function JobPage() {
               <Row label="Booked arrival">{task.scheduledAt && fmtDate(task.scheduledAt)}</Row>
               <Row label="Site contact">{task.siteContact}</Row>
               <Row label="Dispatched by">{task.assignedBy}</Row>
-              <Row label="Partner">{task.asp ?? task.engineerName}</Row>
+              <Row label="Partner">{task.asp}</Row>
             </dl>
           </Panel>
 

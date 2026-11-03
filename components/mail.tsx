@@ -75,7 +75,7 @@ export function MailBanner({ actions }: { actions: ReturnType<typeof useMailActi
   if (!msg) return null;
   return (
     <div role="status" className={cx("anim-fade mb-4 flex items-center justify-between gap-3 rounded-lg border px-4 py-2.5 text-[13px]",
-      msg.tone === "crit" ? "border-crit/25 bg-crit/[0.07] text-[#f08a84]" : "border-ok/25 bg-ok/[0.07] text-[#7bcfa2]")}>
+      msg.tone === "crit" ? "border-crit/25 bg-crit/[0.07] text-crit-fg" : "border-ok/25 bg-ok/[0.07] text-ok-fg")}>
       <span className="flex items-center gap-2"><Icons.Inbox size={14} />{msg.text}</span>
       <button onClick={() => setMsg(null)} aria-label="Dismiss" className="text-fg-subtle hover:text-fg"><Icons.X size={14} /></button>
     </div>
@@ -101,7 +101,7 @@ export function MailDropZone({ actions }: { actions: ReturnType<typeof useMailAc
       className={cx("mb-4 flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-6 py-6 text-center transition-colors duration-150 sm:flex-row sm:gap-4 sm:text-left",
         over ? "border-brand bg-brand/[0.06]" : "border-line-strong bg-panel")}
     >
-      <span className={cx("grid h-10 w-10 shrink-0 place-items-center rounded-lg", over ? "bg-brand/15 text-brand" : "bg-white/[0.04] text-fg-subtle")}>
+      <span className={cx("grid h-10 w-10 shrink-0 place-items-center rounded-lg", over ? "bg-brand/15 text-brand" : "bg-black/[0.035] text-fg-subtle")}>
         <Icons.Upload size={18} />
       </span>
       <div className="min-w-0 flex-1">

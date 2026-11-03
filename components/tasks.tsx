@@ -31,7 +31,7 @@ export function PriorityTag({ sl }: { sl: ServiceLevel }) {
     <span className="inline-flex items-center gap-1.5 text-2xs font-medium text-fg-muted" title={`${p} — ${sl}`}>
       <span className="flex items-end gap-[2px]" aria-hidden="true">
         {[1, 2, 3].map((b) => (
-          <span key={b} className={cx("w-[3px] rounded-sm", b <= bars ? col : "bg-white/10")} style={{ height: 3 + b * 3 }} />
+          <span key={b} className={cx("w-[3px] rounded-sm", b <= bars ? col : "bg-black/[0.08]")} style={{ height: 3 + b * 3 }} />
         ))}
       </span>
       {p}
@@ -229,7 +229,7 @@ export function DetailPanel({ task, onClose, onApprove, onCancelClick, onEditCli
           </div>
           <h2 className="text-[16px] font-semibold leading-snug tracking-tight text-fg">{task.title}</h2>
         </div>
-        <button onClick={onClose} aria-label="Close" className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-fg-subtle hover:bg-white/5 hover:text-fg">
+        <button onClick={onClose} aria-label="Close" className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-fg-subtle hover:bg-black/[0.04] hover:text-fg">
           <Icons.X size={16} />
         </button>
       </div>
@@ -271,12 +271,12 @@ export function DetailPanel({ task, onClose, onApprove, onCancelClick, onEditCli
 
         {task.status === "rejected" && task.rejectionReason && (
           <div className="rounded-lg border border-crit/25 bg-crit/[0.07] px-4 py-3">
-            <p className="text-2xs font-semibold uppercase tracking-[0.06em] text-[#f08a84]">Rejection reason</p>
+            <p className="text-2xs font-semibold uppercase tracking-[0.06em] text-crit-fg">Rejection reason</p>
             <p className="mt-1 text-[13px] text-fg">{task.rejectionReason}</p>
           </div>
         )}
         {task.status === "cancelled" && task.cancelReason && (
-          <div className="rounded-lg border border-line bg-white/[0.03] px-4 py-3">
+          <div className="rounded-lg border border-line bg-black/[0.025] px-4 py-3">
             <p className="text-2xs font-semibold uppercase tracking-[0.06em] text-fg-subtle">Cancellation reason</p>
             <p className="mt-1 text-[13px] text-fg-muted">{task.cancelReason}</p>
           </div>
@@ -322,13 +322,13 @@ export function DetailPanel({ task, onClose, onApprove, onCancelClick, onEditCli
         {["completed", "approved"].includes(task.status) && (
           <div>
             <SectionLabel>
-              Billing {task.status === "completed" ? <span className="ml-1 normal-case tracking-normal text-[#f0bd6d]">· pending approval</span> : null}
+              Billing {task.status === "completed" ? <span className="ml-1 normal-case tracking-normal text-warn-fg">· pending approval</span> : null}
             </SectionLabel>
             <div className="grid grid-cols-3 divide-x divide-line overflow-hidden rounded-lg border border-line">
               {[
                 { l: "Revenue",    v: task.customerChargeUSD ?? rates.customerChargeUSD, c: "text-fg" },
                 { l: "FE payment", v: task.engineerPaymentUSD ?? rates.engineerPaymentUSD, c: "text-fg-muted" },
-                { l: "Profit",     v: task.profit ?? rates.profit, c: "text-[#7bcfa2]" },
+                { l: "Profit",     v: task.profit ?? rates.profit, c: "text-ok-fg" },
               ].map((b) => (
                 <div key={b.l} className="px-4 py-3">
                   <p className="text-2xs text-fg-subtle">{b.l}</p>
@@ -348,7 +348,7 @@ export function DetailPanel({ task, onClose, onApprove, onCancelClick, onEditCli
           </Button>
         )}
         {task.status === "approved" && (
-          <p className="flex items-center justify-center gap-2 py-1 text-[13px] font-medium text-[#7bcfa2]">
+          <p className="flex items-center justify-center gap-2 py-1 text-[13px] font-medium text-ok-fg">
             <Icons.Check size={15} />{task.invoiceId ? `Invoiced — ${task.invoiceNumber}` : "Billed — ready to invoice"}
           </p>
         )}
@@ -393,7 +393,7 @@ function OrangeDetails({ task }: { task: Task }) {
   ].filter((r) => r.v);
   return (
     <div className="overflow-hidden rounded-lg border border-line">
-      <p className="flex items-center gap-2 border-b border-line bg-white/[0.02] px-3.5 py-2 text-2xs font-medium uppercase tracking-[0.06em] text-fg-subtle">
+      <p className="flex items-center gap-2 border-b border-line bg-black/[0.02] px-3.5 py-2 text-2xs font-medium uppercase tracking-[0.06em] text-fg-subtle">
         <Icons.Mail size={12} className="text-brand" />Orange Business work order
       </p>
       <dl className="grid grid-cols-[120px_minmax(0,1fr)] gap-x-3 gap-y-2 px-3.5 py-3 text-[13px]">
@@ -456,7 +456,7 @@ export function PricingBasis({ lines }: { lines: string[] }) {
           const [head, ...rest] = l.split(" — ");
           return (
             <li key={l} className="flex items-start gap-2 text-xs">
-              {flagged ? <Icons.Alert size={12} className="mt-0.5 shrink-0 text-[#f0bd6d]" /> : <Icons.Check size={12} className="mt-0.5 shrink-0 text-[#7bcfa2]" />}
+              {flagged ? <Icons.Alert size={12} className="mt-0.5 shrink-0 text-warn-fg" /> : <Icons.Check size={12} className="mt-0.5 shrink-0 text-ok-fg" />}
               <span><span className="font-medium text-fg">{head}</span>{rest.length > 0 && <span className="text-fg-subtle"> — {rest.join(" — ")}</span>}</span>
             </li>
           );
@@ -492,7 +492,7 @@ function FormStepper({ current }: { current: number }) {
           <div className="flex shrink-0 items-center gap-2">
             <span className={cx(
               "grid h-6 w-6 place-items-center rounded-full text-2xs font-semibold transition-colors duration-200",
-              i < current ? "bg-brand text-[#1a0d03]" :
+              i < current ? "bg-brand text-black" :
               i === current ? "text-brand-soft ring-1 ring-inset ring-brand" : "text-fg-faint ring-1 ring-inset ring-line-strong",
             )} aria-current={i === current ? "step" : undefined}>
               {i < current ? <Icons.Check size={12} /> : i + 1}
@@ -560,14 +560,14 @@ export function CreateTaskDrawer({ onClose, onCreated }: { onClose: () => void; 
           <h2 className="text-[16px] font-semibold tracking-tight text-fg">Create &amp; assign field task</h2>
           <p className="mt-0.5 text-xs text-fg-subtle">Step {formStep + 1} of {FORM_STEPS.length} · {FORM_STEPS[formStep]}</p>
         </div>
-        <button onClick={onClose} aria-label="Close" className="grid h-8 w-8 place-items-center rounded-lg text-fg-subtle hover:bg-white/5 hover:text-fg"><Icons.X size={16} /></button>
+        <button onClick={onClose} aria-label="Close" className="grid h-8 w-8 place-items-center rounded-lg text-fg-subtle hover:bg-black/[0.04] hover:text-fg"><Icons.X size={16} /></button>
       </div>
 
       <div className="scroll-thin flex-1 overflow-y-auto px-6 py-6">
         <FormStepper current={formStep} />
 
         {formError && (
-          <div role="alert" className="mb-4 flex items-center gap-2 rounded-lg border border-crit/25 bg-crit/[0.07] px-3 py-2.5 text-xs font-medium text-[#f08a84]">
+          <div role="alert" className="mb-4 flex items-center gap-2 rounded-lg border border-crit/25 bg-crit/[0.07] px-3 py-2.5 text-xs font-medium text-crit-fg">
             <Icons.Alert size={13} />{formError}
           </div>
         )}
@@ -588,7 +588,7 @@ export function CreateTaskDrawer({ onClose, onCreated }: { onClose: () => void; 
               </div>
               <div>
                 <p className={labelCls}>Customer</p>
-                <div className="flex h-9 items-center gap-2 rounded-lg bg-white/[0.03] px-3 text-[13px] text-fg-muted ring-1 ring-inset ring-line">
+                <div className="flex h-9 items-center gap-2 rounded-lg bg-black/[0.025] px-3 text-[13px] text-fg-muted ring-1 ring-inset ring-line">
                   <span className="h-1.5 w-1.5 rounded-full bg-brand" />Orange Business
                 </div>
               </div>
@@ -628,7 +628,7 @@ export function CreateTaskDrawer({ onClose, onCreated }: { onClose: () => void; 
                 return (
                   <button key={eng.id} type="button" role="radio" aria-checked={sel} onClick={() => setField("engineerId", eng.id)}
                     className={cx("flex items-center gap-3 rounded-lg p-3 text-left ring-1 ring-inset transition-colors duration-150",
-                      sel ? "bg-brand/[0.08] ring-brand/60" : "bg-white/[0.02] ring-line hover:ring-line-strong")}>
+                      sel ? "bg-brand/[0.08] ring-brand/60" : "bg-black/[0.02] ring-line hover:ring-line-strong")}>
                     <Avatar name={eng.name} size={30} />
                     <span className="min-w-0">
                       <span className={cx("block truncate text-[13px] font-medium", sel ? "text-fg" : "text-fg-muted")}>{eng.name}</span>
@@ -663,12 +663,12 @@ export function CreateTaskDrawer({ onClose, onCreated }: { onClose: () => void; 
             </div>
 
             <div className="overflow-hidden rounded-lg border border-line">
-              <p className="border-b border-line bg-white/[0.02] px-4 py-2 text-2xs font-medium uppercase tracking-[0.06em] text-fg-subtle">Live billing preview</p>
+              <p className="border-b border-line bg-black/[0.02] px-4 py-2 text-2xs font-medium uppercase tracking-[0.06em] text-fg-subtle">Live billing preview</p>
               <div className="grid grid-cols-3 divide-x divide-line">
                 {[
                   { l: "Customer charge", v: preview.customerChargeUSD, c: "text-fg" },
                   { l: "FE payment",      v: preview.engineerPaymentUSD, c: "text-fg-muted" },
-                  { l: "Profit",          v: preview.profit, c: "text-[#7bcfa2]" },
+                  { l: "Profit",          v: preview.profit, c: "text-ok-fg" },
                 ].map((b) => (
                   <div key={b.l} className="px-4 py-3.5">
                     <p className="text-2xs text-fg-subtle">{b.l}</p>

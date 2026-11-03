@@ -73,6 +73,8 @@ export interface Task {
   invoiceId?:          string;          // monthly invoice this billed visit is on
   payoutId?:           string;          // partner payout this visit is on
   pricingReviewed?:    { by: string; at: string; note?: string };  // a person confirmed or adjusted the price
+  hotelNights?:        number;          // overnight stays billed at the contract's hotel rate
+  engineerNameSource?: "email" | "manual";  // where engineerName came from; manual names are never overwritten
   assignedBy?:         string;          // Orange dispatcher name
   siteContact?:        string;          // on-site contact as written in the dispatch
   onSiteTimes?:        OnSiteTimes;     // from the "Cleared" notification
@@ -169,3 +171,7 @@ export function generateInvoiceNumber(): string {
 
 // Silence unused import warning
 void buildRuleKey;
+
+/** The engineer's real name, or null while only a placeholder (such as "Exponentia1 FE") is known. */
+export const knownEngineer = (t: Pick<Task, "engineerName" | "engineerNameSource">): string | null =>
+  t.engineerNameSource && t.engineerName?.trim() ? t.engineerName : null;

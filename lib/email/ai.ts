@@ -19,6 +19,7 @@ export interface AiExtraction {
   siteId?:      string;
   city?:        string;
   scheduledAt?: string;   // ISO, requested engineer arrival if stated
+  engineers?:   string[]; // field engineers named in the email
   summary:      string;   // one sentence: what this email changes
 }
 
@@ -45,6 +46,7 @@ const SCHEMA = {
     siteId:      { type: "STRING" },
     city:        { type: "STRING" },
     scheduledAt: { type: "STRING" },
+    engineers:   { type: "ARRAY", items: { type: "STRING" } },
     summary:     { type: "STRING" },
   },
   required: ["relevant", "reason", "kind", "summary"],
@@ -62,6 +64,7 @@ Return JSON only:
 - incident: incident number like INC0320467 if present
 - endCustomer, siteId, city: if stated
 - scheduledAt: requested FE arrival as ISO 8601 with offset (Pakistan is +05:00) if clearly stated
+- engineers: full names of the field engineers (FEs) assigned to, travelling to or working at the site, exactly as written. Only people doing the site work, never the email senders, Orange staff, customer contacts or coordinators. Empty if no engineer is named.
 - summary: one plain sentence describing what this email says happened or is requested
 
 Email:

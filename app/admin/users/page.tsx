@@ -76,7 +76,7 @@ function UserModal({ user, onClose, onSaved }: { user: User | null; onClose: () 
             <p className="mt-1 text-2xs text-fg-faint">At least {MIN_PASSWORD} characters, with letters and numbers. Share it with them privately.</p>
           </div>
         </div>
-        {error && <p role="alert" className="mt-4 rounded-md border border-crit/25 bg-crit/[0.07] px-3 py-2 text-xs text-[#f08a84]">{error}</p>}
+        {error && <p role="alert" className="mt-4 rounded-md border border-crit/25 bg-crit/[0.07] px-3 py-2 text-xs text-crit-fg">{error}</p>}
         <div className="mt-5 flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
           <Button type="submit" variant="primary" disabled={busy}>{busy ? "Saving…" : isNew ? "Add person" : "Save"}</Button>
@@ -156,7 +156,7 @@ export default function UsersPage() {
         subtitle="Who can sign in, and what each person may change"
         actions={<Button variant="primary" onClick={() => setEditing("new")}><Icons.Plus size={14} />Add person</Button>}
       />
-      {error && <p role="alert" className="mb-4 rounded-lg border border-crit/25 bg-crit/[0.07] px-4 py-2.5 text-[13px] text-[#f08a84]">{error}</p>}
+      {error && <p role="alert" className="mb-4 rounded-lg border border-crit/25 bg-crit/[0.07] px-4 py-2.5 text-[13px] text-crit-fg">{error}</p>}
       <Panel title="People" subtitle={users ? `${users.length} account${users.length === 1 ? "" : "s"}` : undefined} bodyClass="p-0">
         {users === null
           ? <p className="py-8 text-center text-xs text-fg-subtle">Loading…</p>

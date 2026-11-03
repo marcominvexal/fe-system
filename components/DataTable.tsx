@@ -97,7 +97,7 @@ export function DataTable<T>({
                   onKeyDown={onRowClick ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onRowClick(r); } } : undefined}
                   tabIndex={onRowClick ? 0 : undefined}
                   className={cx("group transition-colors duration-150", onRowClick && "cursor-pointer",
-                    sel ? "bg-brand/[0.07]" : "hover:bg-white/[0.025]")}>
+                    sel ? "bg-brand/[0.07]" : "hover:bg-black/[0.02]")}>
                   {columns.map((c, ci) => (
                     <td key={c.key}
                       className={cx("border-b border-line/70 px-2.5 py-2.5 align-middle first:pl-4 last:pr-4 sm:first:pl-5 sm:last:pr-5",
@@ -119,12 +119,12 @@ export function DataTable<T>({
         {footer}
         <div className="flex items-center gap-1">
           <button aria-label="Previous page" disabled={p === 0} onClick={() => setPage(p - 1)}
-            className="grid h-7 w-7 place-items-center rounded-md text-fg-muted ring-1 ring-inset ring-line hover:bg-white/5 disabled:opacity-30">
+            className="grid h-7 w-7 place-items-center rounded-md text-fg-muted ring-1 ring-inset ring-line hover:bg-black/[0.04] disabled:opacity-30">
             <Icons.ChevronL size={14} />
           </button>
           <span className="num px-2 text-fg-muted">{p + 1} / {pages}</span>
           <button aria-label="Next page" disabled={p >= pages - 1} onClick={() => setPage(p + 1)}
-            className="grid h-7 w-7 place-items-center rounded-md text-fg-muted ring-1 ring-inset ring-line hover:bg-white/5 disabled:opacity-30">
+            className="grid h-7 w-7 place-items-center rounded-md text-fg-muted ring-1 ring-inset ring-line hover:bg-black/[0.04] disabled:opacity-30">
             <Icons.ChevronR size={14} />
           </button>
         </div>

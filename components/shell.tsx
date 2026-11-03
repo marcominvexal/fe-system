@@ -3,7 +3,7 @@
 import { createContext, useContext, useState } from "react";
 import type { RangeKey } from "@/lib/analytics";
 
-export type JobView = "all" | "open" | "closure" | "late" | "cleared" | "pricing" | "billed" | "cancelled";
+export type JobView = "all" | "open" | "closure" | "late" | "cleared" | "pricing" | "noname" | "billed" | "cancelled";
 
 /** UI-only state shared across admin pages (search, reporting period, work-order view). */
 interface ShellState {

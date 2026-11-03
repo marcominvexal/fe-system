@@ -25,13 +25,13 @@ const STATUS_TONE: Record<TaskStatus, Tone> = {
 
 export type Tone = "neutral" | "muted" | "info" | "brand" | "warn" | "ok" | "crit";
 const TONE: Record<Tone, { dot: string; text: string; bg: string }> = {
-  neutral: { dot: "bg-fg-subtle", text: "text-fg-muted",   bg: "bg-white/[0.04] ring-white/10" },
-  muted:   { dot: "bg-fg-faint",  text: "text-fg-subtle",  bg: "bg-white/[0.02] ring-white/[0.06]" },
-  info:    { dot: "bg-info",      text: "text-[#8dbaf5]",  bg: "bg-info/10 ring-info/20" },
+  neutral: { dot: "bg-fg-subtle", text: "text-fg-muted",   bg: "bg-black/[0.035] ring-black/10" },
+  muted:   { dot: "bg-fg-faint",  text: "text-fg-subtle",  bg: "bg-black/[0.02] ring-black/[0.06]" },
+  info:    { dot: "bg-info",      text: "text-info-fg",  bg: "bg-info/10 ring-info/20" },
   brand:   { dot: "bg-brand",     text: "text-brand-soft", bg: "bg-brand/10 ring-brand/25" },
-  warn:    { dot: "bg-warn",      text: "text-[#f0bd6d]",  bg: "bg-warn/10 ring-warn/20" },
-  ok:      { dot: "bg-ok",        text: "text-[#7bcfa2]",  bg: "bg-ok/10 ring-ok/20" },
-  crit:    { dot: "bg-crit",      text: "text-[#f08a84]",  bg: "bg-crit/10 ring-crit/20" },
+  warn:    { dot: "bg-warn",      text: "text-warn-fg",  bg: "bg-warn/10 ring-warn/20" },
+  ok:      { dot: "bg-ok",        text: "text-ok-fg",  bg: "bg-ok/10 ring-ok/20" },
+  crit:    { dot: "bg-crit",      text: "text-crit-fg",  bg: "bg-crit/10 ring-crit/20" },
 };
 export const toneText = (t: Tone) => TONE[t].text;
 export const toneDot  = (t: Tone) => TONE[t].dot;
@@ -77,11 +77,11 @@ export function Panel({ title, subtitle, actions, children, className, bodyClass
 // ── Buttons ──────────────────────────────────────────────────────────────────
 type BtnVariant = "primary" | "secondary" | "ghost" | "danger" | "success";
 const BTN: Record<BtnVariant, string> = {
-  primary:   "bg-brand text-[#1a0d03] hover:bg-brand-soft shadow-[inset_0_1px_0_rgb(255_255_255/0.25)]",
+  primary:   "bg-brand text-black hover:bg-brand-soft shadow-[inset_0_1px_0_rgb(255_255_255/0.25)]",
   secondary: "bg-raised text-fg ring-1 ring-inset ring-line-strong hover:bg-hover",
-  ghost:     "text-fg-muted hover:text-fg hover:bg-white/5",
-  danger:    "bg-crit/10 text-[#f08a84] ring-1 ring-inset ring-crit/25 hover:bg-crit/20",
-  success:   "bg-ok text-[#04130b] hover:bg-[#58c48c]",
+  ghost:     "text-fg-muted hover:text-fg hover:bg-black/[0.04]",
+  danger:    "bg-crit/10 text-crit-fg ring-1 ring-inset ring-crit/25 hover:bg-crit/20",
+  success:   "bg-ok text-black hover:bg-[#2bb52b]",
 };
 export function Button({ variant = "secondary", size = "md", className, ...p }:
   React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: BtnVariant; size?: "sm" | "md" }) {
@@ -156,7 +156,7 @@ export function Delta({ value, good = "up" }: { value: number | null; good?: "up
   const flat = Math.abs(value) < 0.005;
   return (
     <span className={cx("inline-flex items-center gap-0.5 text-2xs font-medium num",
-      flat ? "text-fg-subtle" : positive ? "text-[#7bcfa2]" : "text-[#f08a84]")}>
+      flat ? "text-fg-subtle" : positive ? "text-ok-fg" : "text-crit-fg")}>
       {!flat && (up ? <Icons.ArrowUp size={11} /> : <Icons.ArrowDn size={11} />)}
       {Math.abs(value * 100).toFixed(Math.abs(value) < 0.1 ? 1 : 0)}%
     </span>
@@ -205,7 +205,7 @@ export function Drawer({ onClose, children, width = "max-w-xl", label }: {
   useEscape(onClose);
   return (
     <div className="admin-shell fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label={label}>
-      <div className="anim-fade absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="anim-fade absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
       <div className={cx("anim-slide relative flex h-full w-full flex-col border-l border-line bg-panel shadow-2xl", width)}>
         {children}
       </div>
@@ -219,7 +219,7 @@ export function Modal({ onClose, children, width = "max-w-md", label }: {
   useEscape(onClose, true);
   return (
     <div className="admin-shell fixed inset-0 z-[60] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={label}>
-      <div className="anim-fade absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="anim-fade absolute inset-0 bg-black/40" onClick={onClose} />
       <div className={cx("anim-pop relative w-full rounded-xl border border-line-strong bg-raised p-5 shadow-2xl", width)}>
         {children}
       </div>

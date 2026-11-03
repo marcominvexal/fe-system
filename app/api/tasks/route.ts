@@ -4,6 +4,7 @@ import { loadPricing } from "@/lib/settings";
 import { buildRuleKey, calculateCommercial } from "@/lib/commercialEngine";
 import { calcDuration } from "@/lib/store";
 import type { Task, TaskStatus } from "@/lib/store";
+import { currentUser } from "@/lib/auth/current";
 
 // ── GET /api/tasks ─────────────────────────────────────────────────────────────
 export async function GET() {
@@ -54,10 +55,13 @@ export async function POST(req: NextRequest) {
 //   { action: "approve" }
 //   { action: "cancel", cancelReason?: string }
 //   { action: "reassign", engineerId: string, engineerName: string }
+//   { action: "set_engineer", engineerName: string }
+//   { action: "set_hotel_nights", hotelNights: number }
 //   (any other partial Task fields = generic edit)
 
 export async function PATCH(req: NextRequest) {
   await loadPricing();
+  const me = await currentUser();
   const body = await req.json() as {
     id: string;
     action?: string;
@@ -170,7 +174,7 @@ export async function PATCH(req: NextRequest) {
       if (t.invoiceId) {
         return NextResponse.json({ error: "This visit is already on an invoice." }, { status: 400 });
       }
-      next = { ...t, pricingReviewed: { by: "Admin", at: new Date().toISOString(), note: rest.note } };
+      next = { ...t, pricingReviewed: { by: me?.name ?? "Admin", at: new Date().toISOString(), note: rest.note } };
       break;
     }
 
@@ -213,8 +217,29 @@ export async function PATCH(req: NextRequest) {
             visitDuration !== t.visitDuration && `${t.visitDuration} → ${visitDuration}`,
           ].filter(Boolean).map((x) => ` (${x})`).join("")}`,
         ],
-        pricingReviewed: { by: "Admin", at: new Date().toISOString(), note: rest.note.trim() },
+        pricingReviewed: { by: me?.name ?? "Admin", at: new Date().toISOString(), note: rest.note.trim() },
       };
+      break;
+    }
+
+    case "set_engineer": {
+      // The engineer's name, when Orange's emails didn't give it or gave it wrong
+      const name = rest.engineerName?.trim();
+      if (!name) return NextResponse.json({ error: "Enter the engineer's name." }, { status: 400 });
+      if (name.length > 120) return NextResponse.json({ error: "That name is too long." }, { status: 400 });
+      next = { ...t, engineerName: name, engineerNameSource: "manual" };
+      break;
+    }
+
+    case "set_hotel_nights": {
+      const nights = Number(rest.hotelNights);
+      if (!Number.isInteger(nights) || nights < 0 || nights > 60) {
+        return NextResponse.json({ error: "Hotel nights must be a whole number from 0 to 60." }, { status: 400 });
+      }
+      if (t.invoiceId) {
+        return NextResponse.json({ error: "This visit is already on an invoice. Adjust the invoice instead." }, { status: 400 });
+      }
+      next = { ...t, hotelNights: nights || undefined };
       break;
     }
 

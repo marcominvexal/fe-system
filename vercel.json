@@ -1,6 +1,105 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
-    { "path": "/api/digest", "schedule": "0 3 * * *" }
+    {
+      "path": "/api/digest",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/mail/sync",
+      "schedule": "5 0 * * *"
+    },
+    {
+      "path": "/api/mail/sync",
+      "schedule": "5 1 * * *"
+    },
+    {
+      "path": "/api/mail/sync",
+      "schedule": "5 2 * * *"
+    },
+    {
+      "path": "/api/mail/sync",
+      "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/mail/sync",
+      "schedule": "5 4 * * *"
+    },
+    {
+      "path": "/api/mail/sync",
+      "schedule": "5 5 * * *"
+    },
+    {
+      "path": "/api/mail/sync",
+      "schedule": "5 6 * * *"
+    },
+    {
+      "path": "/api/mail/sync",
+      "schedule": "5 7 * * *"
+    },
+    {
+      "path": "/api/mail/sync",
+      "schedule": "5 8 * * *"
+    },
+    {
+      "path": "/api/mail/sync",
+      "schedule": "5 9 * * *"
+    },
+    {
+      "path": "/api/mail/sync",
+      "schedule": "5 10 * * *"
+    },
+    {
+      "path": "/api/mail/sync",
+      "schedule": "5 11 * * *"
+    },
+    {
+      "path": "/api/mail/sync",
+      "schedule": "5 12 * * *"
+    },
+    {
+      "path": "/api/mail/sync",
+      "schedule": "5 13 * * *"
+    },
+    {
+      "path": "/api/mail/sync",
+      "schedule": "5 14 * * *"
+    },
+    {
+      "path": "/api/mail/sync",
+      "schedule": "5 15 * * *"
+    },
+    {
+      "path": "/api/mail/sync",
+      "schedule": "5 16 * * *"
+    },
+    {
+      "path": "/api/mail/sync",
+      "schedule": "5 17 * * *"
+    },
+    {
+      "path": "/api/mail/sync",
+      "schedule": "5 18 * * *"
+    },
+    {
+      "path": "/api/mail/sync",
+      "schedule": "5 19 * * *"
+    },
+    {
+      "path": "/api/mail/sync",
+      "schedule": "5 20 * * *"
+    },
+    {
+      "path": "/api/mail/sync",
+      "schedule": "5 21 * * *"
+    },
+    {
+      "path": "/api/mail/sync",
+      "schedule": "5 22 * * *"
+    },
+    {
+      "path": "/api/mail/sync",
+      "schedule": "5 23 * * *"
+    }
   ]
 }

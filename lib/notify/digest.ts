@@ -10,10 +10,13 @@ import { readMailLog } from "@/lib/email/log";
 import { readState } from "@/lib/email/imap";
 import { getInsights } from "@/lib/insightsServer";
 import { attention } from "@/lib/analytics";
+import { getPricing } from "@/lib/pricing";
+import { cycleFor } from "@/lib/cycle";
+import { cycleSummary } from "@/lib/report";
 import { appUrl } from "./mailer";
 
 const DAY = 86_400_000;
-const STALE_SYNC_HOURS = 2;
+const STALE_SYNC_HOURS = 3;
 
 const usd = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
 const ts = (iso?: string) => (iso ? new Date(iso).getTime() : NaN);
@@ -29,6 +32,7 @@ export interface DigestData {
   last24: { emails: number; newJobs: Task[]; cleared: Task[]; billedValue: number };
   attention: { label: string; count: number; href: string }[];
   findings: { title: string; severity: string; href?: string; amount?: number }[];
+  cycle: { name: string; range: string; done: number; committed: number; extra: number; total: number; totalPkr: number };
   money: { readyToInvoice: number; readyCount: number; outstanding: number; overdue: number; overdueCount: number; owedToPartners: number };
   sync: { lastOk: string | null; stale: boolean; failures: number; lastError: string | null };
 }
@@ -69,6 +73,12 @@ export async function buildDigest(now = Date.now()): Promise<DigestData> {
       .filter((f) => f.severity === "high" || f.severity === "medium")
       .slice(0, 6)
       .map((f) => ({ title: f.title, severity: f.severity, href: f.href, amount: f.amount })),
+    cycle: (() => {
+      const k = getPricing().contract;
+      const c = cycleFor(now, k?.cycleStartDay ?? 25);
+      const cs = cycleSummary(tasks, c, k ?? null);
+      return { name: c.name, range: c.range, done: cs.done, committed: cs.committed, extra: cs.inCity.extra + cs.interCity.extra, total: cs.total, totalPkr: cs.totalPkr };
+    })(),
     money: {
       readyToInvoice: ready.reduce((s, t) => s + (t.customerChargeUSD ?? 0), 0),
       readyCount: ready.length,
@@ -138,9 +148,15 @@ export function digestHtml(d: DigestData): string {
     ${d.findings.map((f) => row(`${f.severity === "high" ? `<span style="color:${C.crit};font-weight:700">High</span> · ` : ""}${f.href ? link(f.href, esc(f.title)) : esc(f.title)}`, f.amount ? usd(f.amount) : "")).join("")}
   </table></td></tr>` : ""}
 
+  ${h(`Billing cycle · ${esc(d.cycle.name)} (${esc(d.cycle.range)})`)}
+  <tr><td><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+    ${row("Visits so far", `${d.cycle.done} of ${d.cycle.committed} included${d.cycle.extra ? ` · ${d.cycle.extra} extra` : ""}`)}
+    ${row("To bill so far", `${usd(d.cycle.total)} · PKR ${d.cycle.totalPkr.toLocaleString("en-US")}`)}
+  </table></td></tr>
+
   ${h("Money")}
   <tr><td><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
-    ${row(`Ready to invoice (${d.money.readyCount} visit${d.money.readyCount === 1 ? "" : "s"})`, usd(d.money.readyToInvoice))}
+    ${row(`Visits not yet on an invoice (${d.money.readyCount})`, `${usd(d.money.readyToInvoice)} at rate card`)}
     ${row("Invoiced, not yet paid", usd(d.money.outstanding))}
     ${row(`Overdue (${d.money.overdueCount} invoice${d.money.overdueCount === 1 ? "" : "s"})`, usd(d.money.overdue), d.money.overdueCount ? C.crit : C.faint)}
     ${row("Owed to engineer partners", usd(d.money.owedToPartners))}
@@ -162,7 +178,8 @@ export function digestText(d: DigestData): string {
     `Last 24 hours: ${d.last24.emails} emails read, ${d.last24.newJobs.length} new jobs, ${d.last24.cleared.length} visits cleared, ${usd(d.last24.billedValue)} billed.`, "",
     "Needs attention:", ...d.attention.map((x) => `  ${x.count}  ${x.label}`),
     ...d.findings.map((f) => `  - ${f.title}${f.amount ? ` (${usd(f.amount)})` : ""}`), "",
-    `Ready to invoice: ${usd(d.money.readyToInvoice)} (${d.money.readyCount} visits)`,
+    `Billing cycle ${d.cycle.name} (${d.cycle.range}): ${d.cycle.done} of ${d.cycle.committed} visits${d.cycle.extra ? `, ${d.cycle.extra} extra` : ""}; to bill so far ${usd(d.cycle.total)} (PKR ${d.cycle.totalPkr.toLocaleString("en-US")})`,
+    `Visits not yet on an invoice: ${d.money.readyCount} (${usd(d.money.readyToInvoice)} at rate card)`,
     `Invoiced, not yet paid: ${usd(d.money.outstanding)}`,
     `Overdue: ${usd(d.money.overdue)} (${d.money.overdueCount} invoices)`,
     `Owed to engineer partners: ${usd(d.money.owedToPartners)}`, "",

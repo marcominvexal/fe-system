@@ -57,7 +57,7 @@ export default function EngineersPage() {
                   { l: "Total", v: engTasks.length, c: "text-fg" },
                   { l: "Active", v: active.length, c: active.length ? "text-brand-soft" : "text-fg" },
                   { l: "Done", v: completed.length, c: "text-fg" },
-                  { l: "SLA", v: slaRate == null ? "—" : `${Math.round(slaRate * 100)}%`, c: slaRate != null && slaRate < 0.95 ? "text-[#f0bd6d]" : "text-[#7bcfa2]" },
+                  { l: "SLA", v: slaRate == null ? "—" : `${Math.round(slaRate * 100)}%`, c: slaRate != null && slaRate < 0.95 ? "text-warn-fg" : "text-ok-fg" },
                 ].map((s) => (
                   <div key={s.l} className="bg-panel px-2 py-2.5 text-center">
                     <p className={cx("num text-[17px] font-semibold leading-none", s.c)}>{s.v}</p>
@@ -68,7 +68,7 @@ export default function EngineersPage() {
 
               {entries.length > 0 && (
                 <div className="px-4 pt-4 sm:px-5">
-                  <div className="flex h-1.5 overflow-hidden rounded-full bg-white/[0.05]">
+                  <div className="flex h-1.5 overflow-hidden rounded-full bg-black/[0.04]">
                     {entries.map(([status, count]) => (
                       <span key={status} className={toneDot(statusTone(status))} style={{ width: `${(count / engTasks.length) * 100}%` }} title={`${STATUS_LABEL[status]}: ${count}`} />
                     ))}

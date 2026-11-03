@@ -145,7 +145,7 @@ export function ingestEmail(tasks: Task[], mail: IncomingEmail): { tasks: Task[]
     t.assignedBy  = p.assignedBy;
     t.asp         = p.asp;
     t.siteContact = [p.contactName, p.contactPhone].filter(Boolean).join(" · ") || undefined;
-    if (p.asp) t.engineerName = `${p.asp.replace(/^ASP_[A-Z]{2}\s*/, "")} FE`.trim();
+    if (p.asp && !t.engineerNameSource) t.engineerName = `${p.asp.replace(/^ASP_[A-Z]{2}\s*/, "")} FE`.trim();
     if (p.openedAt) t.createdAt = p.openedAt;
 
     // Price automatically — but never re-price a job that is already billed
@@ -268,6 +268,11 @@ export function ingestAi(tasks: Task[], mail: IncomingEmail, ai: AiExtraction): 
   t.endCustomer = t.endCustomer ?? ai.endCustomer;
   t.siteId      = t.siteId ?? ai.siteId;
   t.scheduledAt = t.scheduledAt ?? ai.scheduledAt;
+  const names = engineerNames(ai.engineers);
+  if (names && t.engineerNameSource !== "manual") {
+    t.engineerName = names;
+    t.engineerNameSource = "email";
+  }
 
   if (!locked) {
     if (ai.kind === "progress" && t.status === "assigned") t.status = "in_progress";
@@ -288,6 +293,19 @@ export function ingestAi(tasks: Task[], mail: IncomingEmail, ai: AiExtraction): 
   t.emailLog = [...(t.emailLog ?? []), event].sort((a, b) => a.at.localeCompare(b.at));
   list[idx] = t;
   return { tasks: list, outcome: { status: created ? "created" : "updated", taskId: t.id, workOrder: wo, kind: "update", viaAi: true } };
+}
+
+/** Engineer names from an email, tidied and joined ("Waqar Islam, Gulraiz Khan"), or null. */
+export function engineerNames(list?: string[]): string | null {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of list ?? []) {
+    const name = raw.replace(/\s+/g, " ").replace(/^(mr|mr\.|engr\.?|engineer)\s+/i, "").trim();
+    if (name.length < 3 || name.length > 60 || /@|\d/.test(name)) continue;
+    const key = name.toLowerCase();
+    if (!seen.has(key)) { seen.add(key); out.push(name); }
+  }
+  return out.length ? out.join(", ") : null;
 }
 
 function titleCase(s: string) {

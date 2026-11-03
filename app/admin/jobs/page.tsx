@@ -3,16 +3,18 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { useRouter } from "next/navigation";
-import type { Task } from "@/lib/store";
+import { knownEngineer, type Task } from "@/lib/store";
 import { useStore } from "@/lib/storeContext";
 import { useShell, type JobView } from "@/components/shell";
 import { Icons } from "@/components/icons";
-import { PageHeader, Segmented, Stat, StatStrip, cx, toneText } from "@/components/ui";
+import { Button, PageHeader, Segmented, Stat, StatStrip, cx, toneText } from "@/components/ui";
 import { DataTable, type Column } from "@/components/DataTable";
 import { MailBanner, MailButtons, useMailActions } from "@/components/mail";
 import { StageTracker } from "@/components/workflow";
 import { headline, stages } from "@/lib/workflow";
 import { fmtUSD, taskValue, timeAgo } from "@/lib/analytics";
+import { workOrdersCsv } from "@/lib/report";
+import { downloadText } from "@/components/billing";
 
 
 const isOpen = (t: Task) => !["approved", "cancelled", "rejected"].includes(t.status);
@@ -29,6 +31,7 @@ const MATCH: Record<JobView, (t: Task) => boolean> = {
   late: isLate,
   cleared: (t) => t.status === "completed",
   pricing: needsPricingCheck,
+  noname: (t) => t.status !== "cancelled" && !knownEngineer(t),
   billed: (t) => t.status === "approved",
   cancelled: (t) => t.status === "cancelled",
 };
@@ -36,7 +39,7 @@ const MATCH: Record<JobView, (t: Task) => boolean> = {
 function lastUpdate(t: Task) {
   const e = t.emailLog?.[t.emailLog.length - 1];
   if (!e) return { at: t.createdAt, text: "Created" };
-  return { at: e.at, text: e.kind === "dispatch" ? "Dispatch received" : e.kind === "photo" ? "Photo uploaded" : "Cleared by Orange" };
+  return { at: e.at, text: e.kind === "dispatch" ? "Dispatch received" : e.kind === "photo" ? "Photo uploaded" : e.kind === "cleared" ? "Cleared by Orange" : "Orange update" };
 }
 
 export default function JobsPage() {
@@ -47,7 +50,7 @@ export default function JobsPage() {
 
   const rows = useMemo(() => {
     const q = query.toLowerCase();
-    return tasks.filter((t) => MATCH[view](t) && (!q || [t.title, t.id, t.workOrder ?? "", t.endCustomer ?? "", t.siteId ?? "", t.location]
+    return tasks.filter((t) => MATCH[view](t) && (!q || [t.title, t.id, t.workOrder ?? "", t.endCustomer ?? "", t.siteId ?? "", t.location, knownEngineer(t) ?? ""]
       .some((v) => v.toLowerCase().includes(q))));
   }, [tasks, view, query]);
 
@@ -68,7 +71,14 @@ export default function JobsPage() {
           <p className="truncate text-2xs text-fg-subtle">{t.siteId ?? t.location}</p>
         </div>
       ) },
-    { key: "progress", header: "Progress", sort: (t) => stages(t).filter((s) => s.state === "done").length,
+    { key: "engineer", header: "Engineer", sort: (t) => knownEngineer(t) ?? "~",
+      render: (t) => {
+        const name = knownEngineer(t);
+        return name
+          ? <span className="block max-w-[180px] truncate text-[13px] font-medium text-fg" title={name}>{name}</span>
+          : <span className="whitespace-nowrap text-xs text-warn-fg">Name not received</span>;
+      } },
+    { key: "progress", header: "Progress", sort: (t) => stages(t).filter((s) => s.state === "done").length, className: "hidden 2xl:table-cell",
       render: (t) => <StageTracker task={t} size="compact" /> },
     { key: "status", header: "Where it stands",
       render: (t) => {
@@ -87,7 +97,7 @@ export default function JobsPage() {
     { key: "go", header: <span className="sr-only">Open</span>, align: "right",
       render: (t) => (
         <Link href={`/admin/jobs/${t.id}`} onClick={(e) => e.stopPropagation()}
-          className="inline-flex items-center gap-0.5 rounded-md px-2 py-1 text-xs font-medium text-fg-muted hover:bg-white/5 hover:text-fg">
+          className="inline-flex items-center gap-0.5 rounded-md px-2 py-1 text-xs font-medium text-fg-muted hover:bg-black/[0.04] hover:text-fg">
           Track<Icons.ChevronR size={12} />
         </Link>
       ) },
@@ -100,6 +110,7 @@ export default function JobsPage() {
     { value: "closure", label: "Awaiting closure" },
     { value: "cleared", label: "Cleared, not billed", optional: true },
     { value: "pricing", label: "Pricing to check", optional: true },
+    { value: "noname", label: "No engineer name", optional: true },
     { value: "billed", label: "Billed" },
     { value: "cancelled", label: "Cancelled" },
     { value: "all", label: "All" },
@@ -110,14 +121,20 @@ export default function JobsPage() {
   return (
     <div>
       <PageHeader title="Work orders" subtitle="Every Orange Business work order, tracked from its emails"
-        actions={<MailButtons actions={mail} />} />
+        actions={<>
+          <Button onClick={() => downloadText(`work-orders-${new Date().toISOString().slice(0, 10)}.csv`, workOrdersCsv(rows))}
+            disabled={!rows.length} title="Download the work orders shown below as a spreadsheet">
+            <Icons.Download size={14} />Export to Excel
+          </Button>
+          <MailButtons actions={mail} />
+        </>} />
       <MailBanner actions={mail} />
 
       <StatStrip>
         <Stat label="Open" value={open.length} foot={`${fmtUSD(open.reduce((s, t) => s + taskValue(t), 0))} in progress`} accent={open.length > 0} />
         <Stat label="Awaiting closure" value={closure.length} foot="Visit time passed, not cleared" />
         <Stat label="Late arrivals" value={late.length} foot="Engineer not on site in time" />
-        <Stat label="Billed" value={billed.length} foot={`${fmtUSD(billed.reduce((s, t) => s + (t.customerChargeUSD ?? 0), 0))} total`} />
+        <Stat label="Billed" value={billed.length} foot={`${fmtUSD(billed.reduce((s, t) => s + (t.customerChargeUSD ?? 0), 0))} at rate card`} />
       </StatStrip>
 
       <section className="overflow-hidden rounded-xl border border-line bg-panel">

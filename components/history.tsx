@@ -6,10 +6,10 @@ import { Icons } from "./icons";
 import { cx } from "./ui";
 
 const ACTOR: Record<string, { label: string; icon: React.ReactNode; cls: string }> = {
-  email:  { label: "Orange email", icon: <Icons.Mail size={12} />,    cls: "bg-info/12 text-[#8dbaf5]" },
+  email:  { label: "Orange email", icon: <Icons.Mail size={12} />,    cls: "bg-info/12 text-info-fg" },
   ai:     { label: "AI",           icon: <Icons.Sparkle size={12} />, cls: "bg-brand/12 text-brand-soft" },
-  admin:  { label: "Admin",        icon: <Icons.Users size={12} />,   cls: "bg-white/[0.06] text-fg-muted" },
-  system: { label: "System",       icon: <Icons.Bolt size={12} />,    cls: "bg-white/[0.06] text-fg-subtle" },
+  admin:  { label: "Admin",        icon: <Icons.Users size={12} />,   cls: "bg-black/[0.05] text-fg-muted" },
+  system: { label: "System",       icon: <Icons.Bolt size={12} />,    cls: "bg-black/[0.05] text-fg-subtle" },
 };
 
 // Plain names for the fields people care about

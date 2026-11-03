@@ -15,8 +15,8 @@ export interface AutomationInfo {
   scheduled: boolean;
 }
 
-// The scheduler runs every 15 minutes; flag the sync once it has missed a few runs
-const STALE_MINUTES = 45;
+// Vercel runs the sync hourly (GitHub tries every 15 minutes); flag it once a couple of runs are missed
+const STALE_MINUTES = 150;
 
 const ago = (iso: string) => {
   const m = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
@@ -35,7 +35,7 @@ function Item({ icon, title, state, tone, children }: {
         <span className="text-fg-faint">{icon}</span>
         <p className="text-[13px] font-medium text-fg">{title}</p>
         <span className={cx("ml-auto flex items-center gap-1.5 text-2xs font-medium",
-          tone === "ok" ? "text-[#7bcfa2]" : tone === "warn" ? "text-[#f0bd6d]" : tone === "crit" ? "text-[#f08a84]" : "text-fg-subtle")}>
+          tone === "ok" ? "text-ok-fg" : tone === "warn" ? "text-warn-fg" : tone === "crit" ? "text-crit-fg" : "text-fg-subtle")}>
           <span className={cx("h-1.5 w-1.5 rounded-full", tone === "ok" ? "bg-ok" : tone === "warn" ? "bg-warn" : tone === "crit" ? "bg-crit" : "bg-fg-faint")} />
           {state}
         </span>
@@ -77,13 +77,13 @@ export function AutomationStrip({ info, runs, lastRunAt }: { info: AutomationInf
     <section aria-label="Automation" className="mb-5">
       <div className="grid grid-cols-1 gap-px overflow-hidden rounded-xl border border-line bg-line md:grid-cols-3">
         <Item icon={<Icons.Refresh size={14} />} title="Scheduled inbox sync" state={syncState} tone={syncTone}>
-          <p>{info.scheduled ? "Every 15 minutes, day and night." : "Set CRON_SECRET to let the scheduler run it."}</p>
+          <p>{info.scheduled ? "About every hour, day and night." : "Set CRON_SECRET to let the scheduler run it."}</p>
           <p>{lastOk ? `Last success ${ago(lastOk.at)}.` : "No successful sync yet."}
-            {lastFail && <span className="text-[#f08a84]"> Last error: {lastFail.error}</span>}</p>
+            {lastFail && <span className="text-crit-fg"> Last error: {lastFail.error}</span>}</p>
         </Item>
         <Item icon={<Icons.Mail size={14} />} title="Daily digest" state={d?.error ? "Last send failed" : info.digestRecipients ? `${info.digestRecipients} recipient${info.digestRecipients === 1 ? "" : "s"}` : "No recipients"} tone={digestTone}>
           <p>Every morning around 08:00 Pakistan time, to admin and finance users.</p>
-          <p>{d ? (d.error ? <span className="text-[#f08a84]">{d.error}</span> : `Last sent ${ago(d.at)} to ${d.recipients}.`) : "Not sent yet."}</p>
+          <p>{d ? (d.error ? <span className="text-crit-fg">{d.error}</span> : `Last sent ${ago(d.at)} to ${d.recipients}.`) : "Not sent yet."}</p>
           {canEdit && (
             <div className="flex flex-wrap gap-2 pt-1.5">
               <a href="/api/digest?preview=1" target="_blank" rel="noreferrer"

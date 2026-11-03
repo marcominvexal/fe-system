@@ -1,6 +1,11 @@
 /**
- * /lib/billing.ts — Server-side only. Monthly invoices to Orange Business,
- * credit notes, and payouts to field-engineer partners.
+ * /lib/billing.ts — Server-side only. Invoices to Orange Business per billing
+ * cycle (25th to 24th), credit notes, and payouts to field-engineer partners.
+ *
+ * Under the contract each cycle's invoice carries the monthly recurring charge
+ * (MRC), which covers a set number of in-city and intercity visits. Visits
+ * beyond that are billed at the rate card, and overnight stays add a hotel
+ * charge per night.
  *
  *   Billed work order ──(invoice run)──▶ Draft invoice ─▶ Sent ─▶ Paid
  *                                         └─ adjustments     └─ credit notes
@@ -11,22 +16,31 @@
  */
 import { getDb } from "./db/client";
 import type { Task } from "./store";
+import { knownEngineer } from "./store";
 import { getTask, listTasks, saveTask, type Actor } from "./repo";
-import { getPricing } from "./pricing";
+import { getPricing, type Contract } from "./pricing";
 import { writeAudit } from "@/lib/audit";
 
 export type InvoiceStatus = "draft" | "sent" | "paid" | "void";
 export type PayoutStatus  = "pending" | "paid";
 
+export type VisitArea = "in_city" | "intercity";
+
 export interface InvoiceLine {
   id:          string;
-  kind:        "visit" | "adjustment";
+  kind:        "mrc" | "visit" | "hotel" | "adjustment";
   workOrderId?: string;
   workOrder?:  string;
   date?:       string;     // cleared date
   description: string;
   amount:      number;     // USD, negative for discounts and credits
   fePay?:      number;
+  // Visit lines under the contract
+  area?:       VisitArea;  // within 50 km, or beyond
+  included?:   boolean;    // covered by the monthly charge, so amount is 0
+  rated?:      number;     // what the rate card says the visit is worth
+  engineer?:   string;
+  nights?:     number;     // hotel lines
 }
 
 export interface Invoice {
@@ -48,6 +62,8 @@ export interface Invoice {
   voidedAt?:   string;
   creditFor?:  string;     // credit note: id of the invoice it reduces
   notes?:      string;
+  cycle?:      string;     // billing cycle name, e.g. "November 2026"
+  usdToPkr?:   number;     // exchange rate at the time of the run
 }
 
 export interface PayoutLine { workOrderId: string; workOrder?: string; date?: string; description: string; amount: number }
@@ -91,8 +107,10 @@ function partnerOf(t: Task) {
   return t.asp ?? t.engineerName ?? "Unassigned";
 }
 
+export const areaOf = (t: Pick<Task, "distanceBand">): VisitArea => (t.distanceBand === "<50km" ? "in_city" : "intercity");
+
 function totals(lines: InvoiceLine[]) {
-  const subtotal = round2(lines.filter((l) => l.kind === "visit").reduce((s, l) => s + l.amount, 0));
+  const subtotal = round2(lines.filter((l) => l.kind !== "adjustment").reduce((s, l) => s + l.amount, 0));
   const adjustments = round2(lines.filter((l) => l.kind === "adjustment").reduce((s, l) => s + l.amount, 0));
   return { subtotal, adjustments, total: round2(subtotal + adjustments) };
 }
@@ -154,10 +172,76 @@ export async function listPayouts(): Promise<Payout[]> {
 }
 
 // ── Invoice run ──────────────────────────────────────────────────────────────
-export interface RunPreview { periodStart: string; periodEnd: string; visits: Task[]; total: number; partners: { partner: string; visits: number; total: number }[] }
+export interface AreaCount { done: number; included: number; extra: number }
 
-export async function previewRun(periodStart: string, periodEnd: string): Promise<RunPreview> {
-  const visits = await unbilled(periodStart, periodEnd);
+export interface RunPreview {
+  periodStart: string;
+  periodEnd:   string;
+  cycle?:      string;
+  visits:      Task[];
+  lines:       InvoiceLine[];
+  total:       number;
+  usdToPkr:    number;
+  contract:    (Contract & { mrcAlreadyBilled: boolean; inCity: AreaCount; interCity: AreaCount }) | null;
+  partners:    { partner: string; visits: number; total: number }[];
+}
+
+const kindLabel = (t: Task) =>
+  `${t.maintenanceLevel === "Planned Activity" ? "Planned" : "Reactive"} ${t.serviceLevel} · ${t.distanceBand} · ${t.visitDuration}`;
+
+/** Invoice lines for a cycle: the monthly charge, each visit (included or extra), and hotel nights. */
+export async function previewRun(periodStart: string, periodEnd: string, cycle?: string): Promise<RunPreview> {
+  const cfg = getPricing();
+  const k = cfg.contract?.enabled ? cfg.contract : null;
+  const visits = (await unbilled(periodStart, periodEnd))
+    .sort((a, b) => (clearedDate(a) ?? "").localeCompare(clearedDate(b) ?? ""));
+
+  // A second run in the same cycle (e.g. a late closure) must not charge the MRC
+  // again, and continues the included-visit count where the first run stopped.
+  const earlier = (await listInvoices()).filter((i) =>
+    i.kind === "invoice" && i.status !== "void" && i.periodStart === periodStart && i.periodEnd === periodEnd);
+  const earlierLines = earlier.flatMap((i) => i.lines);
+  const mrcAlreadyBilled = earlierLines.some((l) => l.kind === "mrc");
+  const count = (): Record<VisitArea, AreaCount> => ({ in_city: { done: 0, included: 0, extra: 0 }, intercity: { done: 0, included: 0, extra: 0 } });
+  const c = count();
+  for (const l of earlierLines) {
+    if (l.kind !== "visit" || !l.area) continue;
+    c[l.area].done++;
+    if (l.included) c[l.area].included++; else c[l.area].extra++;
+  }
+  const quota: Record<VisitArea, number> = { in_city: k?.includedInCity ?? 0, intercity: k?.includedInterCity ?? 0 };
+
+  const lines: InvoiceLine[] = [];
+  if (k && !mrcAlreadyBilled) {
+    lines.push({
+      id: lineId(), kind: "mrc",
+      description: `Monthly recurring charge${cycle ? ` · ${cycle} cycle` : ""} · covers ${k.includedInCity + k.includedInterCity} visits (${k.includedInCity} in-city, ${k.includedInterCity} intercity)`,
+      amount: k.mrcUSD,
+    });
+  }
+  for (const t of visits) {
+    const area = areaOf(t);
+    const rated = t.customerChargeUSD ?? 0;
+    const included = !!k && c[area].included < quota[area];
+    c[area].done++;
+    if (included) c[area].included++; else c[area].extra++;
+    lines.push({
+      id: lineId(), kind: "visit", workOrderId: t.id, workOrder: t.workOrder ?? t.id, date: clearedDate(t),
+      description: `${t.workOrder ? `WO ${t.workOrder} · ` : ""}${t.endCustomer ?? t.title} · ${kindLabel(t)}${included ? " · included in monthly charge" : k ? " · additional visit" : ""}`,
+      amount: included ? 0 : rated, rated, included, area,
+      engineer: knownEngineer(t) ?? undefined, fePay: t.engineerPaymentUSD,
+    });
+    const nights = t.hotelNights ?? 0;
+    if (nights > 0) {
+      const rate = k?.hotelPerNightUSD ?? 125;
+      lines.push({
+        id: lineId(), kind: "hotel", workOrderId: t.id, workOrder: t.workOrder ?? t.id, date: clearedDate(t),
+        description: `Hotel accommodation · WO ${t.workOrder ?? t.id} · ${nights} night${nights === 1 ? "" : "s"} × $${rate}`,
+        amount: round2(nights * rate), nights, engineer: knownEngineer(t) ?? undefined,
+      });
+    }
+  }
+
   const byPartner = new Map<string, { visits: number; total: number }>();
   for (const t of visits) {
     const p = partnerOf(t);
@@ -165,37 +249,31 @@ export async function previewRun(periodStart: string, periodEnd: string): Promis
     byPartner.set(p, { visits: cur.visits + 1, total: round2(cur.total + (t.engineerPaymentUSD ?? 0)) });
   }
   return {
-    periodStart, periodEnd, visits,
-    total: round2(visits.reduce((s, t) => s + (t.customerChargeUSD ?? 0), 0)),
+    periodStart, periodEnd, cycle, visits, lines,
+    total: round2(lines.reduce((s, l) => s + l.amount, 0)),
+    usdToPkr: cfg.contract?.usdToPkr ?? 280,
+    contract: k ? { ...k, mrcAlreadyBilled, inCity: c.in_city, interCity: c.intercity } : null,
     partners: [...byPartner].map(([partner, v]) => ({ partner, ...v })),
   };
 }
 
-/** Create a draft invoice for every uninvoiced billed visit in the period, plus partner payouts. */
-export async function createRun(periodStart: string, periodEnd: string, actor: Actor = "admin") {
-  const { visits } = await previewRun(periodStart, periodEnd);
-  if (!visits.length) return { invoice: null, payouts: [] as Payout[] };
+/** Create the cycle's draft invoice (monthly charge, visits, hotel nights) plus partner payouts. */
+export async function createRun(periodStart: string, periodEnd: string, actor: Actor = "admin", cycle?: string) {
+  const preview = await previewRun(periodStart, periodEnd, cycle);
+  const { visits, lines } = preview;
+  if (!lines.length) return { invoice: null, payouts: [] as Payout[] };
 
   const now = new Date().toISOString();
-  const number = await nextNumber("INV", periodStart);
-  const lines: InvoiceLine[] = visits
-    .sort((a, b) => (clearedDate(a) ?? "").localeCompare(clearedDate(b) ?? ""))
-    .map((t) => ({
-      id: lineId(),
-      kind: "visit",
-      workOrderId: t.id,
-      workOrder: t.workOrder ?? t.id,
-      date: clearedDate(t),
-      description: `${t.workOrder ? `WO ${t.workOrder} · ` : ""}${t.title} · ${t.maintenanceLevel === "Planned Activity" ? "Planned" : "Reactive"} ${t.serviceLevel} · ${t.distanceBand} · ${t.visitDuration}`,
-      amount: t.customerChargeUSD ?? 0,
-      fePay: t.engineerPaymentUSD,
-    }));
+  // Numbered by the month the cycle ends in: the November cycle (25 Oct – 24 Nov) is INV-202611-…
+  const number = await nextNumber("INV", periodEnd);
   const invoice: Invoice = {
     id: number, number, kind: "invoice", status: "draft", customer: "Orange Business",
     periodStart, periodEnd, lines, ...totals(lines), createdAt: now,
+    cycle, usdToPkr: preview.usdToPkr,
   };
   await putInvoice(invoice);
-  await audit("invoice", invoice.id, actor, "created", `Invoice run for ${periodStart} – ${periodEnd}: ${lines.length} visit(s)`);
+  await audit("invoice", invoice.id, actor, "created",
+    `Invoice for ${cycle ? `the ${cycle} cycle` : `${periodStart} – ${periodEnd}`}: ${visits.length} visit(s)${lines.some((l) => l.kind === "mrc") ? " plus the monthly charge" : ""}`);
 
   // Payouts: one per partner for visits not already paid out
   const groups = new Map<string, Task[]>();
@@ -206,10 +284,10 @@ export async function createRun(periodStart: string, periodEnd: string, actor: A
   }
   const payouts: Payout[] = [];
   for (const [partner, list] of groups) {
-    const pnum = await nextNumber("PO", periodStart);
+    const pnum = await nextNumber("PO", periodEnd);
     const plines: PayoutLine[] = list.map((t) => ({
       workOrderId: t.id, workOrder: t.workOrder ?? t.id, date: clearedDate(t),
-      description: t.title, amount: t.engineerPaymentUSD ?? 0,
+      description: `${t.title}${knownEngineer(t) ? ` · ${knownEngineer(t)}` : ""}`, amount: t.engineerPaymentUSD ?? 0,
     }));
     const payout: Payout = {
       id: pnum, number: pnum, partner, status: "pending", periodStart, periodEnd,
@@ -261,7 +339,7 @@ export async function updateInvoice(
       inv.lines = inv.lines.filter((l) => l.id !== line.id);
       Object.assign(inv, totals(inv.lines));
       await putInvoice(inv);
-      if (line.workOrderId) {
+      if (line.kind === "visit" && line.workOrderId) {
         const t = await getTask(line.workOrderId);
         if (t) await saveTask({ ...t, invoiceId: undefined, invoiceNumber: undefined }, actor, `Removed from invoice ${inv.number}`, t);
       }

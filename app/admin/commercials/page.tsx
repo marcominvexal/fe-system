@@ -16,6 +16,13 @@ const CATEGORIES: { key: RateCategory; label: string; hint: string }[] = [
   { key: "reactive_24x7", label: "Reactive", hint: "24x7 4h" },
 ];
 const DURATIONS: VisitDuration[] = ["2h", "Half Day", "Full Day"];
+
+// Service names and response times from the signed commercial sheet
+const SERVICE: Record<DistanceBand, Partial<Record<RateCategory, string>>> = {
+  "<50km":    { planned: "8x5xNBD · response 24–48 h", reactive_8x5: "8x5x4 · response 4 h", reactive_24x7: "24x7x4 · response 4 h" },
+  "50-100km": { planned: "8x5xNCD · response 12 h", reactive_8x5: "Not in the sheet · same as 24x7", reactive_24x7: "24x7xNCD · response 12–24 h" },
+  ">100km":   { planned: "8x5xNCD · response 24 h", reactive_8x5: "Not in the sheet · same as 24x7", reactive_24x7: "24x7xNCD · response 24–48 h" },
+};
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 interface HistoryItem { id: number; at: string; actor: string; changes: Record<string, [unknown, unknown]>; reason: string | null }
@@ -83,23 +90,54 @@ export default function PricingRulesPage() {
 
   return (
     <div className="pb-24">
-      <PageHeader title="Pricing rules"
-        subtitle="The rate card and the rules that price Orange work orders automatically. Changes apply to new and open work; billed visits keep their price." />
+      <PageHeader title="Contract & rates"
+        subtitle="The monthly contract with Orange, the rate card for visits beyond it, and the rules that price work orders automatically. Billed visits keep their price." />
 
       {user && !isAdmin && (
         <p className="mb-4 rounded-lg border border-line bg-panel px-4 py-2.5 text-[13px] text-fg-subtle">Read-only: only an admin can change pricing rules and invoice settings.</p>
       )}
 
       {msg && (
-        <div role="status" className={cx("mb-4 rounded-lg border px-4 py-2.5 text-[13px]", msg.ok ? "border-ok/25 bg-ok/[0.07] text-[#7bcfa2]" : "border-crit/25 bg-crit/[0.07] text-[#f08a84]")}>{msg.text}</div>
+        <div role="status" className={cx("mb-4 rounded-lg border px-4 py-2.5 text-[13px]", msg.ok ? "border-ok/25 bg-ok/[0.07] text-ok-fg" : "border-crit/25 bg-crit/[0.07] text-crit-fg")}>{msg.text}</div>
       )}
 
       <fieldset disabled={!isAdmin} className="min-w-0">
 
       <div className="grid gap-4 xl:grid-cols-12">
         <div className="min-w-0 space-y-4 xl:col-span-8">
+          {/* Monthly contract */}
+          <Panel title="Monthly contract" subtitle="A fixed monthly charge covers a set number of visits each billing cycle. Visits beyond that are billed at the rate card below.">
+            <label className="mb-4 flex cursor-pointer items-start gap-3 border border-line p-3">
+              <input type="checkbox" checked={cfg.contract.enabled} onChange={(e) => set((c) => { c.contract.enabled = e.target.checked; })}
+                className="mt-0.5 h-4 w-4 accent-[#ff7900]" />
+              <span>
+                <span className="block text-[13px] font-bold text-fg">Bill with the monthly charge</span>
+                <span className="block text-xs text-fg-subtle">When off, every visit is billed at the rate card and there is no monthly charge.</span>
+              </span>
+            </label>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <NumberField id="k-mrc" label="Monthly charge (MRC)" suffix="USD" value={cfg.contract.mrcUSD}
+                onChange={(n) => set((c) => { c.contract.mrcUSD = n; })} />
+              <NumberField id="k-in" label="In-city visits included" suffix="visits" value={cfg.contract.includedInCity}
+                onChange={(n) => set((c) => { c.contract.includedInCity = n; })} />
+              <NumberField id="k-inter" label="Intercity visits included" suffix="visits" value={cfg.contract.includedInterCity}
+                onChange={(n) => set((c) => { c.contract.includedInterCity = n; })} />
+              <NumberField id="k-hotel" label="Hotel, per night" suffix="USD" value={cfg.contract.hotelPerNightUSD}
+                onChange={(n) => set((c) => { c.contract.hotelPerNightUSD = n; })} />
+              <NumberField id="k-fx" label="Exchange rate" suffix="PKR/USD" step={0.01} value={cfg.contract.usdToPkr}
+                onChange={(n) => set((c) => { c.contract.usdToPkr = n; })} />
+              <NumberField id="k-day" label="Billing cycle starts on day" suffix="of month" min={1} value={cfg.contract.cycleStartDay}
+                onChange={(n) => set((c) => { c.contract.cycleStartDay = n; })} />
+            </div>
+            <p className="mt-4 bg-brand-tint px-3 py-2.5 text-[13px] text-fg">
+              Each cycle (the {cfg.contract.cycleStartDay}th to the {cfg.contract.cycleStartDay - 1}th) Orange pays <b>${(cfg.contract.mrcUSD || 0).toLocaleString("en-US")}</b>
+              {" "}(PKR {Math.round((cfg.contract.mrcUSD || 0) * (cfg.contract.usdToPkr || 0)).toLocaleString("en-US")}) for up to {(cfg.contract.includedInCity || 0) + (cfg.contract.includedInterCity || 0)} visits:
+              {" "}{cfg.contract.includedInCity} within 50 km and {cfg.contract.includedInterCity} beyond. Extra visits use the rate card; overnight stays add ${cfg.contract.hotelPerNightUSD} a night.
+            </p>
+          </Panel>
+
           {/* Rate card */}
-          <Panel title="Rate card" subtitle={`Customer charge per visit in USD. Engineer pay is ${Math.round((cfg.fePayPct || 0) * 100)}% of each charge.`}>
+          <Panel title="Rate card" subtitle={`Charge per visit in USD, used for visits beyond the monthly commitment. Engineer pay is ${Math.round((cfg.fePayPct || 0) * 100)}% of each rate.`}>
             <div className="space-y-5">
               {DISTANCES.map((band) => (
                 <div key={band}>
@@ -115,7 +153,8 @@ export default function PricingRulesPage() {
                       <tbody>
                         {CATEGORIES.map((c) => (
                           <tr key={c.key}>
-                            <td className="py-1 pr-3 text-fg-muted">{c.label} <span className="text-2xs text-fg-subtle">{c.hint}</span></td>
+                            <td className="py-1 pr-3 text-fg-muted">{c.label} <span className="text-2xs text-fg-subtle">{c.hint}</span>
+                              {SERVICE[band][c.key] && <span className="block text-2xs text-fg-faint">{SERVICE[band][c.key]}</span>}</td>
                             {DURATIONS.map((v) => {
                               const val = cfg.table[band][c.key][v];
                               const changed = val !== saved.table[band][c.key][v];
@@ -179,7 +218,7 @@ export default function PricingRulesPage() {
               </div>
               <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-line p-3 sm:col-span-2">
                 <input type="checkbox" checked={cfg.rules.autoBillOnCleared} onChange={(e) => set((c) => { c.rules.autoBillOnCleared = e.target.checked; })}
-                  className="mt-0.5 h-4 w-4 accent-[#f97316]" />
+                  className="mt-0.5 h-4 w-4 accent-[#ff7900]" />
                 <span>
                   <span className="block text-[13px] font-medium text-fg">Bill automatically when Orange clears a visit</span>
                   <span className="block text-xs text-fg-subtle">When off, cleared visits wait as “Cleared, not billed” for someone to approve.</span>
@@ -207,7 +246,7 @@ export default function PricingRulesPage() {
                     {DISTANCES.map((d) => <option key={d}>{d}</option>)}
                   </Select>
                   <button type="button" aria-label={`Remove ${city}`} onClick={() => set((c) => { delete c.rules.cityDistance[city]; })}
-                    className="grid h-8 w-8 place-items-center rounded-md text-fg-faint hover:bg-white/5 hover:text-[#f08a84]"><Icons.X size={14} /></button>
+                    className="grid h-8 w-8 place-items-center rounded-md text-fg-faint hover:bg-black/[0.04] hover:text-crit-fg"><Icons.X size={14} /></button>
                 </li>
               ))}
               {!cities.length && <li className="px-3 py-3 text-xs text-fg-subtle">No cities yet — every site uses the default band.</li>}
@@ -281,7 +320,7 @@ export default function PricingRulesPage() {
         <div className="anim-pop fixed inset-x-0 bottom-0 z-30 border-t border-line-strong bg-raised/95 px-4 py-3 backdrop-blur-md lg:left-[var(--sidebar,0px)]" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
           <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-3 sm:px-2">
             <p className="text-[13px] text-fg">Unsaved changes</p>
-            {errors.length > 0 && <p className="text-xs text-[#f08a84]">{errors[0]}{errors.length > 1 ? ` (+${errors.length - 1} more)` : ""}</p>}
+            {errors.length > 0 && <p className="text-xs text-crit-fg">{errors[0]}{errors.length > 1 ? ` (+${errors.length - 1} more)` : ""}</p>}
             <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason for the change (optional)" aria-label="Reason for the change"
               className={cx(inputCls, "h-8 max-w-xs flex-1")} />
             <div className="ml-auto flex gap-2">

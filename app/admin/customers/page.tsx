@@ -57,7 +57,7 @@ export default function CustomersPage() {
                 const cBilled  = cTasks.filter((t) => t.status === "approved").reduce((s, t) => s + (t.customerChargeUSD ?? 0), 0);
                 const td = "border-b border-line/70 px-3 py-3.5 first:pl-5 last:pr-5";
                 return (
-                  <tr key={c.id} className="transition-colors hover:bg-white/[0.025]">
+                  <tr key={c.id} className="transition-colors hover:bg-black/[0.02]">
                     <td className={td}>
                       <div className="flex items-center gap-3">
                         <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand/10 text-[13px] font-semibold text-brand-soft ring-1 ring-inset ring-brand/20">

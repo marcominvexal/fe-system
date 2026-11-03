@@ -20,12 +20,21 @@ Invoiced by **Exponentia Global**. Made by **Invexal**.
 - Every email is processed once (tracked by Message-ID). At most 30 emails per sync go to the AI; the rest wait for the next sync.
 - Billed is not invoiced: a monthly invoice run (`INV-YYYYMM-NN`) picks up billed visits and creates engineer payouts (`PO-…`). Credit notes are `CN-…`.
 
+## Billing: contract and cycles
+
+- **Billing cycle:** the 25th to the 24th of the next month, named by the month it ends in (the *November 2026* cycle is 25 Oct – 24 Nov). The start day is a setting.
+- **Contract:** each cycle Orange pays a monthly recurring charge (default USD 2,985, PKR 835,800 at 280) covering 16 in-city visits (within 50 km) and 4 intercity visits. Further visits are billed at the rate card; overnight stays add USD 125 a night. All of this is editable under **Contract & rates**.
+- **Invoices:** one per cycle (`INV-YYYYMM-NN`, by the month the cycle ends). Lines: the monthly charge, every visit Orange closed in the cycle marked *included* or *extra*, and hotel nights. Totals show USD and PKR.
+- **Engineer names:** read from Orange's emails by the AI reader; people can add or correct them on the job page. `scripts/backfill-engineers.mjs` filled them in for jobs created before this.
+- **Reports** (`/admin/reports`): the cycle's bill, visits per engineer and all work orders, downloadable to Excel (CSV) or printable as PDF (`/print/report?cycle=YYYY-MM`).
+
 ## Pages
 
 | Route | Purpose |
 |---|---|
 | `/login` | Sign in; creates the first admin when there are no users |
-| `/admin` | Overview: what needs attention, revenue, pipeline |
+| `/admin` | Dashboard: this cycle's visits against the commitment, amount to bill, what needs attention |
+| `/admin/reports` | Cycle bill, engineer report and work-order exports (Excel / PDF) |
 | `/admin/jobs`, `/admin/jobs/[id]` | Work orders; job page with stage tracker, email timeline, change history, pricing |
 | `/admin/inbox` | Processed emails, sync history, automation status, `.msg`/`.eml` upload |
 | `/admin/invoices`, `/admin/invoices/[id]` | Invoice runs, credit notes, payouts, CSV |
@@ -50,7 +59,7 @@ Sessions are HMAC-signed HttpOnly cookies (12 hours). Five wrong passwords lock 
 
 | Job | Schedule | Runs on |
 |---|---|---|
-| Inbox sync, `GET /api/mail/sync` | Every 15 minutes | GitHub Actions (`.github/workflows/inbox-sync.yml`). Vercel's Hobby plan only allows daily jobs. |
+| Inbox sync, `GET /api/mail/sync` | Hourly | Vercel Cron: 24 daily jobs, one per hour (Hobby plans allow each job once a day). GitHub Actions (`.github/workflows/inbox-sync.yml`) also tries every 15 minutes, but GitHub often delays free schedules by hours. |
 | Daily digest, `GET /api/digest` | 03:00 UTC (08:00 Pakistan) | Vercel Cron (`vercel.json`) |
 | Failure alert email to admins | When a scheduled sync fails, at most every 6 hours | Inside the sync |
 

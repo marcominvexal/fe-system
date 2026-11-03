@@ -8,7 +8,7 @@ import type { Task } from "@/lib/store";
 import { useStore } from "@/lib/storeContext";
 import { Icons } from "@/components/icons";
 import { Badge, Button, Modal, Panel, cx, inputCls, labelCls, textareaCls } from "@/components/ui";
-import { INVOICE_TONE, downloadText, fmtDay, invoiceCsv, isOverdue, monthLabel, statusLabel } from "@/components/billing";
+import { INVOICE_TONE, downloadText, fmtDay, invoiceCsv, isOverdue, periodLabel, statusLabel } from "@/components/billing";
 import { fmtUSD } from "@/lib/analytics";
 
 interface Detail {
@@ -65,7 +65,10 @@ export default function InvoicePage() {
   const net = inv.total - credited;
   const overdue = isOverdue(inv);
   const visits = inv.lines.filter((l) => l.kind === "visit");
+  const charges = inv.lines.filter((l) => l.kind === "mrc");
+  const hotels = inv.lines.filter((l) => l.kind === "hotel");
   const adjustments = inv.lines.filter((l) => l.kind === "adjustment");
+  const extras = visits.filter((l) => !l.included).length;
   const woById = new Map(d.workOrders.map((t) => [t.id, t]));
   const fePay = visits.reduce((s, l) => s + (l.fePay ?? 0), 0);
   const openDialog = (k: Dialog) => { setDialog(k); setError(""); setAmount(""); setText(""); };
@@ -78,19 +81,24 @@ export default function InvoicePage() {
           {l.kind === "visit" ? (
             <>
               <Link href={`/admin/jobs/${l.workOrderId}`} className="font-mono text-[13px] font-semibold text-fg hover:text-brand-soft">{l.workOrder}</Link>
-              <p className="mt-0.5 max-w-[520px] text-xs text-fg-muted">{l.description.replace(/^WO [^·]+ · /, "")}</p>
+              <p className="mt-0.5 max-w-[520px] text-xs text-fg-muted">{l.description.replace(/^WO [^·]+ · /, "").replace(/ · (included in monthly charge|additional visit)$/, "")}</p>
+              <p className="mt-0.5 text-2xs">
+                <span className="text-fg-subtle">{l.engineer ?? "Engineer not named"}</span>
+                {l.included !== undefined && <span className={cx("ml-2 font-bold", l.included ? "text-fg-subtle" : "text-brand-soft")}>{l.included ? "Included in monthly charge" : "Extra visit"}</span>}
+              </p>
               {t?.emailLog?.length ? <p className="mt-0.5 text-2xs text-fg-subtle">{t.emailLog.length} Orange email(s) on file{t.duration ? ` · ${t.duration} on site` : ""}</p> : null}
             </>
           ) : (
-            <p className="text-[13px] text-fg">{l.description}<span className="ml-2 text-2xs text-fg-subtle">Adjustment</span></p>
+            <p className={cx("text-[13px] text-fg", l.kind === "mrc" && "font-bold")}>{l.description}
+              {l.kind === "adjustment" && <span className="ml-2 text-2xs text-fg-subtle">Adjustment</span>}</p>
           )}
         </td>
         <td className="num hidden border-b border-line/70 px-3 py-2.5 align-top text-xs text-fg-subtle sm:table-cell">{l.date ? fmtDay(l.date) : "—"}</td>
-        <td className={cx("num border-b border-line/70 px-4 py-2.5 text-right align-top font-medium sm:px-5", l.amount < 0 ? "text-[#f08a84]" : "text-fg")}>
-          {fmtUSD(l.amount)}
+        <td className={cx("num border-b border-line/70 px-4 py-2.5 text-right align-top font-medium sm:px-5", l.amount < 0 ? "text-crit-fg" : "text-fg")}>
+          {l.included ? <span className="text-fg-faint" title={`Rate card ${fmtUSD(l.rated ?? 0)}`}>{fmtUSD(0)}</span> : fmtUSD(l.amount)}
           {inv.status === "draft" && (
             <button onClick={() => act("remove_line", { lineId: l.id })} title={l.kind === "visit" ? "Remove from this invoice (the visit goes back to ready to invoice)" : "Remove adjustment"}
-              className="ml-2 inline-grid h-5 w-5 place-items-center rounded text-fg-faint opacity-0 transition-opacity hover:bg-white/5 hover:text-[#f08a84] group-hover:opacity-100 focus:opacity-100">
+              className="ml-2 inline-grid h-5 w-5 place-items-center rounded text-fg-faint opacity-0 transition-opacity hover:bg-black/[0.04] hover:text-crit-fg group-hover:opacity-100 focus:opacity-100">
               <Icons.X size={12} />
             </button>
           )}
@@ -112,7 +120,7 @@ export default function InvoicePage() {
             <Badge tone={overdue ? "crit" : INVOICE_TONE[inv.status]}>{overdue ? "Overdue" : statusLabel(inv)}</Badge>
             {inv.kind === "credit" && <Badge tone="warn" dot={false}>Credit note</Badge>}
           </div>
-          <p className="mt-1 text-[14px] text-fg-muted">{inv.customer} · {monthLabel(inv.periodStart)}</p>
+          <p className="mt-1 text-[14px] text-fg-muted">{inv.customer} · {periodLabel(inv)} · {fmtDay(inv.periodStart)} – {fmtDay(inv.periodEnd)}</p>
           <p className="mt-0.5 text-xs text-fg-subtle">
             {inv.kind === "credit" && d.original ? <>Reduces <Link href={`/admin/invoices/${d.original.id}`} className="text-brand-soft hover:text-brand">{d.original.number}</Link> · </> : null}
             Created {fmtDay(inv.createdAt)}{inv.sentAt && ` · sent ${fmtDay(inv.sentAt)}`}{inv.dueAt && ` · due ${fmtDay(inv.dueAt)}`}{inv.paidAt && ` · paid ${fmtDay(inv.paidAt)}`}
@@ -120,8 +128,9 @@ export default function InvoicePage() {
         </div>
         <div className="text-right">
           <p className="text-2xs font-medium uppercase tracking-[0.07em] text-fg-subtle">{credited ? "Net after credits" : "Total"}</p>
-          <p className={cx("num text-[28px] font-semibold leading-tight tracking-tight", net < 0 ? "text-[#f08a84]" : "text-fg")}>{fmtUSD(net)}</p>
+          <p className={cx("num text-[28px] font-semibold leading-tight tracking-tight", net < 0 ? "text-crit-fg" : "text-fg")}>{fmtUSD(net)}</p>
           {credited > 0 && <p className="num text-2xs text-fg-subtle">{fmtUSD(inv.total)} − {fmtUSD(credited)} credited</p>}
+          {inv.usdToPkr && <p className="num text-[13px] font-bold text-fg-muted">PKR {Math.round(net * inv.usdToPkr).toLocaleString("en-US")}</p>}
         </div>
       </div>
 
@@ -135,12 +144,12 @@ export default function InvoicePage() {
         {inv.kind === "invoice" && ["sent", "paid"].includes(inv.status) && <Button onClick={() => openDialog("credit")}>Issue credit note</Button>}
         {["draft", "sent"].includes(inv.status) && inv.kind === "invoice" && <Button variant="danger" onClick={() => openDialog("void")}>Void</Button>}
         <span className="mx-1 hidden h-5 w-px bg-line sm:block" />
-        <Button onClick={() => downloadText(`${inv.number}.csv`, invoiceCsv(inv))}><Icons.Invoice size={14} />Download CSV</Button>
+        <Button onClick={() => downloadText(`${inv.number}.csv`, invoiceCsv(inv))}><Icons.Download size={14} />Excel</Button>
         <a href={`/print/invoice/${encodeURIComponent(inv.id)}`} target="_blank" rel="noreferrer"
           className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-raised px-3.5 text-[13px] font-medium text-fg ring-1 ring-inset ring-line-strong transition-colors hover:bg-hover">
-          <Icons.Upload size={14} className="rotate-180" />Invoice pack (PDF)
+          <Icons.Print size={14} />Invoice pack (PDF)
         </a>
-        {error && !dialog && <p role="alert" className="text-xs text-[#f08a84]">{error}</p>}
+        {error && !dialog && <p role="alert" className="text-xs text-crit-fg">{error}</p>}
       </div>
       {inv.status === "draft" && (
         <p className="mb-4 rounded-lg border border-line bg-panel px-4 py-2.5 text-xs text-fg-subtle">
@@ -155,23 +164,27 @@ export default function InvoicePage() {
               <table className="w-full border-separate border-spacing-0 text-[13px]">
                 <thead>
                   <tr className="text-2xs uppercase tracking-[0.06em] text-fg-subtle">
-                    <th className="border-b border-line bg-raised px-4 py-2 text-left font-medium sm:px-5">{inv.kind === "credit" ? "Credit" : `Visits (${visits.length})`}</th>
+                    <th className="border-b border-line bg-raised px-4 py-2 text-left font-medium sm:px-5">{inv.kind === "credit" ? "Credit" : `Visits (${visits.length}${extras ? `, ${extras} extra` : ""})`}</th>
                     <th className="hidden border-b border-line bg-raised px-3 py-2 text-left font-medium sm:table-cell">Cleared</th>
                     <th className="border-b border-line bg-raised px-4 py-2 text-right font-medium sm:px-5">Amount</th>
                   </tr>
                 </thead>
                 <tbody>
+                  {charges.map(lineRow)}
                   {visits.map(lineRow)}
+                  {hotels.map(lineRow)}
                   {adjustments.map(lineRow)}
                   {!inv.lines.length && <tr><td colSpan={3} className="px-5 py-10 text-center text-xs text-fg-subtle">No lines on this invoice.</td></tr>}
                 </tbody>
               </table>
             </div>
             <div className="flex flex-col items-end gap-1 border-t border-line bg-raised/50 px-5 py-4 text-[13px]">
-              {inv.kind === "invoice" && <p className="num text-fg-muted">Visits <span className="ml-6 text-fg">{fmtUSD(inv.subtotal)}</span></p>}
+              {charges.length > 0 && <p className="num text-fg-muted">Monthly charge <span className="ml-6 text-fg">{fmtUSD(charges.reduce((s, l) => s + l.amount, 0))}</span></p>}
+              {inv.kind === "invoice" && <p className="num text-fg-muted">{charges.length ? "Extra visits" : "Visits"} <span className="ml-6 text-fg">{fmtUSD(visits.reduce((s, l) => s + l.amount, 0))}</span></p>}
+              {hotels.length > 0 && <p className="num text-fg-muted">Hotel <span className="ml-6 text-fg">{fmtUSD(hotels.reduce((s, l) => s + l.amount, 0))}</span></p>}
               {inv.adjustments !== 0 && <p className="num text-fg-muted">Adjustments <span className="ml-6 text-fg">{fmtUSD(inv.adjustments)}</span></p>}
               <p className="num text-[15px] font-semibold text-fg">Total <span className="ml-6">{fmtUSD(inv.total)}</span></p>
-              {credited > 0 && <p className="num text-fg-muted">Credit notes <span className="ml-6 text-[#f08a84]">−{fmtUSD(credited)}</span></p>}
+              {credited > 0 && <p className="num text-fg-muted">Credit notes <span className="ml-6 text-crit-fg">−{fmtUSD(credited)}</span></p>}
             </div>
           </section>
         </div>
@@ -182,7 +195,7 @@ export default function InvoicePage() {
               <dl className="space-y-1.5 text-[13px]">
                 <div className="flex justify-between"><dt className="text-fg-subtle">Charged to Orange</dt><dd className="num text-fg">{fmtUSD(net)}</dd></div>
                 <div className="flex justify-between"><dt className="text-fg-subtle">Partner payouts</dt><dd className="num text-fg-muted">−{fmtUSD(fePay)}</dd></div>
-                <div className="flex justify-between border-t border-line pt-1.5"><dt className="font-medium text-fg">Profit</dt><dd className="num font-semibold text-[#7bcfa2]">{fmtUSD(net - fePay)}</dd></div>
+                <div className="flex justify-between border-t border-line pt-1.5"><dt className="font-medium text-fg">Profit</dt><dd className="num font-semibold text-ok-fg">{fmtUSD(net - fePay)}</dd></div>
               </dl>
             </Panel>
           )}
@@ -192,7 +205,7 @@ export default function InvoicePage() {
                 {d.credits.map((c) => (
                   <li key={c.id} className="flex justify-between gap-3">
                     <Link href={`/admin/invoices/${c.id}`} className="font-mono text-fg hover:text-brand-soft">{c.number}</Link>
-                    <span className="num text-[#f08a84]">{fmtUSD(c.total)}</span>
+                    <span className="num text-crit-fg">{fmtUSD(c.total)}</span>
                   </li>
                 ))}
               </ul>
@@ -246,7 +259,7 @@ export default function InvoicePage() {
             <label className={cx(labelCls, "mt-3")} htmlFor="paid-ref">Note <span className="normal-case tracking-normal text-fg-faint">(optional)</span></label>
             <input id="paid-ref" value={text} onChange={(e) => setText(e.target.value)} placeholder="e.g. remittance reference" className={inputCls} />
           </>}
-          {error && <p role="alert" className="mt-3 text-xs text-[#f08a84]">{error}</p>}
+          {error && <p role="alert" className="mt-3 text-xs text-crit-fg">{error}</p>}
           <div className="mt-5 flex gap-2">
             <Button onClick={() => setDialog(null)} className="flex-1">Cancel</Button>
             <Button variant={dialog === "void" ? "danger" : dialog === "pay" ? "success" : "primary"} disabled={busy} className="flex-1"

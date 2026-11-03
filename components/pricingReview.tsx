@@ -13,7 +13,7 @@ import { Icons } from "./icons";
 import { Button, Modal, Select, cx, labelCls, textareaCls } from "./ui";
 
 export function ConfidenceBadge({ c, size = "md" }: { c: Confidence; size?: "sm" | "md" }) {
-  const tone = c.level === "high" ? "text-[#7bcfa2] ring-ok/30 bg-ok/10" : c.level === "medium" ? "text-[#f0bd6d] ring-warn/30 bg-warn/10" : "text-[#f08a84] ring-crit/30 bg-crit/10";
+  const tone = c.level === "high" ? "text-ok-fg ring-ok/30 bg-ok/10" : c.level === "medium" ? "text-warn-fg ring-warn/30 bg-warn/10" : "text-crit-fg ring-crit/30 bg-crit/10";
   return (
     <span className={cx("num inline-flex items-center gap-1 rounded-md font-semibold ring-1 ring-inset", tone, size === "sm" ? "px-1.5 text-2xs" : "px-2 py-0.5 text-xs")}
       title={c.reasons.map((r) => r.text).join("\n") || "Every pricing input came from a reliable source"}>
@@ -35,7 +35,7 @@ export function ConfidenceReasons({ task }: { task: Task }) {
         <ul className="mt-2 space-y-1">
           {c.reasons.map((r) => (
             <li key={r.text} className="flex items-start gap-2 text-xs text-fg-muted">
-              {r.points > 0 ? <span className="num mt-px w-8 shrink-0 text-right text-2xs text-[#f08a84]">−{r.points}</span> : <Icons.Check size={12} className="mt-0.5 w-8 shrink-0 text-[#7bcfa2]" />}
+              {r.points > 0 ? <span className="num mt-px w-8 shrink-0 text-right text-2xs text-crit-fg">−{r.points}</span> : <Icons.Check size={12} className="mt-0.5 w-8 shrink-0 text-ok-fg" />}
               <span>{r.text}</span>
             </li>
           ))}
@@ -88,14 +88,14 @@ export function RepriceModal({ task, onClose, onDone }: { task: Task; onClose: (
         <span className="text-fg-subtle">New charge</span>
         <span className="num">
           <span className="font-semibold text-fg">{fmtUSD(price.customerChargeUSD)}</span>
-          {diff !== 0 && <span className={cx("ml-2 text-xs", diff > 0 ? "text-[#7bcfa2]" : "text-[#f08a84]")}>{diff > 0 ? "+" : "−"}{fmtUSD(Math.abs(diff))}</span>}
+          {diff !== 0 && <span className={cx("ml-2 text-xs", diff > 0 ? "text-ok-fg" : "text-crit-fg")}>{diff > 0 ? "+" : "−"}{fmtUSD(Math.abs(diff))}</span>}
           <span className="ml-3 text-xs text-fg-subtle">FE pay {fmtUSD(price.engineerPaymentUSD)}</span>
         </span>
       </div>
       <label className={cx(labelCls, "mt-3")} htmlFor="rp-note">Reason</label>
       <textarea id="rp-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} className={textareaCls}
         placeholder="e.g. Site is in Hyderabad, over 100 km from base" />
-      {error && <p role="alert" className="mt-2 text-xs text-[#f08a84]">{error}</p>}
+      {error && <p role="alert" className="mt-2 text-xs text-crit-fg">{error}</p>}
       <div className="mt-4 flex gap-2">
         <Button onClick={onClose} className="flex-1">Cancel</Button>
         <Button variant="primary" onClick={submit} disabled={busy || !note.trim()} className="flex-1">{busy ? "Saving…" : "Save price"}</Button>

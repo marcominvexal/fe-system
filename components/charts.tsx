@@ -89,8 +89,8 @@ function Tooltip({ x, w, title, rows }: { x: number; w: number; title: string; r
 
 const Sw = {
   area: <span className="h-2 w-2 rounded-sm bg-brand" />,
-  dash: <span className="h-0 w-2.5 border-t border-dashed border-[#8b8b92]" />,
-  line: <span className="h-0 w-2.5 border-t border-[#a6a6ac]" />,
+  dash: <span className="h-0 w-2.5 border-t border-dashed border-fg-faint" />,
+  line: <span className="h-0 w-2.5 border-t border-fg-subtle" />,
   proj: <span className="h-0 w-2.5 border-t border-dashed border-brand-soft" />,
 };
 
@@ -243,7 +243,7 @@ export function DailyBars({ labels, current, previous, unit, height = 248 }: {
 export function Bullet({ value, target, tone = "brand" }: { value: number | null; target: number; tone?: "brand" | "ok" | "warn" | "crit" }) {
   const fill = { brand: "bg-brand", ok: "bg-ok", warn: "bg-warn", crit: "bg-crit" }[tone];
   return (
-    <div className="relative h-1.5 w-full rounded-full bg-white/[0.06]">
+    <div className="relative h-1.5 w-full rounded-full bg-black/[0.05]">
       <div className={cx("h-full rounded-full transition-[width] duration-500", fill)} style={{ width: `${Math.min(100, (value ?? 0) * 100)}%` }} />
       <div className="absolute -top-1 h-3.5 w-0.5 rounded-full bg-fg" style={{ left: `calc(${target * 100}% - 1px)` }} title={`Target ${Math.round(target * 100)}%`} />
     </div>

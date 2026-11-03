@@ -1,33 +1,48 @@
 @import "tailwindcss";
 
 /* ── Design tokens ──────────────────────────────────────────────────────────
-   Charcoal foundation, neutral content, orange reserved for action, active
-   state and meaning. Semantic hues are desaturated so they read as signal. */
+   Orange Business: white pages, black type, a black navigation rail and
+   Orange's own orange (#FF7900) for action and active state only. Corners
+   are nearly square and type is Helvetica, as in Orange's brand. Colours are
+   variables (not inlined) so the dark navigation can redefine them. */
 @theme inline {
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-sans: "Helvetica Neue", Helvetica, Arial, ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, Consolas, monospace;
 
-  --color-canvas:      #0f0f10;
-  --color-panel:       #161617;
-  --color-raised:      #1c1c1e;
-  --color-hover:       #222224;
-  --color-line:        #29292c;
-  --color-line-strong: #38383c;
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  --radius-xl: 6px;
+}
 
-  --color-fg:          #ededee;
-  --color-fg-muted:    #a6a6ac;
-  --color-fg-subtle:   #8b8b92;
-  --color-fg-faint:    #5f5f66;
+@theme {
+  --color-canvas:      #f4f4f4;
+  --color-panel:       #ffffff;
+  --color-raised:      #ffffff;
+  --color-hover:       #f2f2f2;
+  --color-line:        #e2e2e2;
+  --color-line-strong: #cccccc;
 
-  --color-brand:        #f97316;
-  --color-brand-strong: #ea580c;
-  --color-brand-soft:   #fb923c;
-  --color-brand-tint:   rgb(249 115 22 / 0.12);
+  --color-fg:          #000000;
+  --color-fg-muted:    #333333;
+  --color-fg-subtle:   #595959;
+  --color-fg-faint:    #8a8a8a;
 
-  --color-ok:   #46b37b;
-  --color-warn: #e9a23b;
-  --color-crit: #e5534b;
-  --color-info: #5b9cf0;
+  /* Orange brand; brand-soft is the darker orange that stays readable as text on white */
+  --color-brand:        #ff7900;
+  --color-brand-strong: #f16e00;
+  --color-brand-soft:   #c75300;
+  --color-brand-tint:   rgb(255 121 0 / 0.1);
+
+  /* Signal colours (Orange "Boosted" palette) and darker versions for text */
+  --color-ok:   #32c832;
+  --color-warn: #ffb400;
+  --color-crit: #cd3c14;
+  --color-info: #527edb;
+  --color-ok-fg:   #1d6e1d;
+  --color-warn-fg: #8a5300;
+  --color-crit-fg: #b0300c;
+  --color-info-fg: #2e58b8;
 
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 1rem;
@@ -39,20 +54,39 @@ body {
   font-family: var(--font-sans);
 }
 
-/* Admin shell is dark-only; the FE workspace keeps its own light theme */
-.admin-shell { color-scheme: dark; font-feature-settings: "cv11", "ss01"; }
+.admin-shell { color-scheme: light; }
 
-/* Numbers in tables/KPIs line up */
+/* The black navigation rail: same components, dark values */
+.on-dark {
+  color-scheme: dark;
+  --color-canvas: #000000;
+  --color-panel: #111111;
+  --color-raised: #1a1a1a;
+  --color-hover: #1f1f1f;
+  --color-line: #262626;
+  --color-line-strong: #3a3a3a;
+  --color-fg: #ffffff;
+  --color-fg-muted: #d6d6d6;
+  --color-fg-subtle: #a6a6a6;
+  --color-fg-faint: #7a7a7a;
+  --color-brand-soft: #ff8f33;
+  --color-ok-fg: #6fd36f;
+  --color-warn-fg: #ffc94d;
+  --color-crit-fg: #f2836b;
+  --color-info-fg: #9db8f0;
+}
+
+/* Numbers in tables and figures line up */
 .num { font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 
-/* Focus ring — visible, on-brand, keyboard only */
+/* Focus ring: visible, on-brand, keyboard only */
 .admin-shell :where(a, button, input, select, textarea, [tabindex]):focus-visible {
   outline: 2px solid var(--color-brand);
   outline-offset: 2px;
 }
 
-/* Thin, quiet scrollbars inside the dark shell */
-.scroll-thin { scrollbar-width: thin; scrollbar-color: #3a3a3e transparent; }
+.scroll-thin { scrollbar-width: thin; scrollbar-color: #c4c4c4 transparent; }
+.on-dark .scroll-thin, .on-dark.scroll-thin { scrollbar-color: #3a3a3a transparent; }
 
 @keyframes fade-in  { from { opacity: 0 } to { opacity: 1 } }
 @keyframes slide-in { from { transform: translateX(16px); opacity: 0 } to { transform: none; opacity: 1 } }

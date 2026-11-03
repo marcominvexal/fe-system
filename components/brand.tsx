@@ -21,11 +21,11 @@ export function ExponentiaLogo({ height = 22, onLight, className }: { height?: n
 }
 
 /** "Powered by Exponentia Global" line for footers. */
-export function PoweredBy({ className }: { className?: string }) {
+export function PoweredBy({ className, onLight }: { className?: string; onLight?: boolean }) {
   return (
     <div className={cx("flex items-center gap-2 text-2xs text-fg-faint", className)}>
       <span>Powered by</span>
-      <ExponentiaLogo height={18} />
+      <ExponentiaLogo height={18} onLight={onLight} />
     </div>
   );
 }
