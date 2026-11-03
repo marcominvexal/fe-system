@@ -4,17 +4,17 @@ import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { knownEngineer, type Task } from "@/lib/store";
-import { placeSite, type DataCentre } from "@/lib/geo";
+import { MAP_CITIES, cityPoint, nearestCentre, placeSite, type DataCentre } from "@/lib/geo";
 import { inCycle, type Cycle } from "@/lib/cycle";
 import { clearedAt, plainStatus } from "@/lib/report";
 import { stages } from "@/lib/workflow";
 import { Panel, Segmented, cx } from "./ui";
-import type { MapPoint } from "./SiteMap";
+import type { MapLabel, MapPoint } from "./SiteMap";
 
 // Leaflet needs the browser, so the map loads on the client only
 const SiteMap = dynamic(() => import("./SiteMap"), {
   ssr: false,
-  loading: () => <div style={{ height: 420 }} className="grid w-full place-items-center border border-line bg-[#f2f2f2] text-[13px] text-fg-subtle">Loading map…</div>,
+  loading: () => <div style={{ height: 480 }} className="grid w-full place-items-center border border-line bg-[#f2f2f2] text-[13px] text-fg-subtle">Loading map…</div>,
 });
 
 type View = "open" | "cycle" | "all";
@@ -62,10 +62,12 @@ export function WorkMap({ tasks, cycle, centres, roadFactor }: {
         </div>`;
       }).join("");
       const band = BAND_TEXT[tasksHere[0].distanceBand] ?? tasksHere[0].distanceBand;
+      const lat = list.reduce((n, x) => n + x.lat, 0) / list.length;
+      const lng = list.reduce((n, x) => n + x.lng, 0) / list.length;
+      const near = nearestCentre({ lat, lng }, centres, roadFactor);
       return {
-        id: city,
-        lat: list.reduce((n, x) => n + x.lat, 0) / list.length,
-        lng: list.reduce((n, x) => n + x.lng, 0) / list.length,
+        id: city, lat, lng,
+        link: near ? { lat: near.centre.lat, lng: near.centre.lng, km: near.km } : undefined,
         color: open ? "#ff7900" : "#000000",
         ring: late > 0,
         count: tasksHere.length,
@@ -77,6 +79,13 @@ export function WorkMap({ tasks, cycle, centres, roadFactor }: {
         </div>`,
       };
     });
+  }, [placed, centres, roadFactor]);
+
+  // Labels: reference cities for orientation, cities with jobs in bold
+  const cities: MapLabel[] = useMemo(() => {
+    const withJobs = new Set(placed.map((p) => p.city));
+    const names = [...new Set([...MAP_CITIES, ...withJobs])];
+    return names.flatMap((n) => { const c = cityPoint(n); return c ? [{ ...c, strong: withJobs.has(n) }] : []; });
   }, [placed]);
 
   // Side lists: visits by city and by engineer, for what is on the map
@@ -100,12 +109,13 @@ export function WorkMap({ tasks, cycle, centres, roadFactor }: {
       className="mb-6">
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
         <div className="min-w-0">
-          <SiteMap points={points} centres={centres} roadFactor={roadFactor} onOpen={(id) => router.push(`/admin/jobs/${id}`)} />
+          <SiteMap points={points} centres={centres} roadFactor={roadFactor} cities={cities} onOpen={(id) => router.push(`/admin/jobs/${id}`)} />
           <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-[12px] text-fg-subtle">
             <span className="flex items-center gap-1.5"><span className="h-3 w-3 border-2 border-brand bg-black" />Multinet data centre</span>
             <span className="flex items-center gap-1.5"><span className="grid h-4 min-w-4 place-items-center bg-brand px-1 text-[10px] font-bold text-black">2</span>Jobs in a city, some open</span>
             <span className="flex items-center gap-1.5"><span className="grid h-4 min-w-4 place-items-center border-2 border-crit bg-brand px-1 text-[10px] font-bold text-black">1</span>Engineer late</span>
             <span className="flex items-center gap-1.5"><span className="grid h-4 min-w-4 place-items-center bg-black px-1 text-[10px] font-bold text-white">5</span>All finished</span>
+            <span className="flex items-center gap-1.5"><span className="w-5 border-t-2 border-dotted border-black" />Distance to nearest data centre</span>
             <span className="ml-auto">Sites are placed by city{unplaced > 0 ? ` · ${unplaced} without a known city not shown` : ""}</span>
           </div>
         </div>

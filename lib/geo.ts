@@ -144,3 +144,20 @@ export function placeSite(src: { city?: string; siteId?: string; location?: stri
   const r = 0.02 + (((h >>> 9) % 100) / 100) * 0.03; // about 2–5 km
   return { city: city.name, lat: city.lat + r * Math.sin(angle), lng: city.lng + r * Math.cos(angle) };
 }
+
+/** A city's position by name, or null if it isn't in the list. */
+export function cityPoint(name: string): { name: string; lat: number; lng: number } | null {
+  const c = CITIES.find((x) => x.name.toLowerCase() === name.toLowerCase());
+  return c ? { name: c.name, lat: c.lat, lng: c.lng } : null;
+}
+
+/** Reference cities shown on maps for orientation. */
+export const MAP_CITIES = ["Karachi", "Lahore", "Islamabad", "Peshawar", "Quetta", "Multan", "Faisalabad", "Hyderabad", "Sukkur", "Gwadar"];
+
+/** The nearest data centre to a point, and the estimated road distance to it. */
+export function nearestCentre(at: { lat: number; lng: number }, centres: DataCentre[], roadFactor: number): { centre: DataCentre; km: number } | null {
+  const ok = centres.filter((c) => Number.isFinite(c.lat) && Number.isFinite(c.lng));
+  if (!ok.length) return null;
+  const best = ok.map((c) => ({ centre: c, km: kmBetween(at, c) * (roadFactor > 0 ? roadFactor : 1) })).sort((a, b) => a.km - b.km)[0];
+  return { centre: best.centre, km: Math.round(best.km) };
+}
