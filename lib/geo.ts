@@ -14,7 +14,7 @@ import type { DistanceBand } from "./pricing";
 
 export interface DataCentre { name: string; lat: number; lng: number }
 
-/** Multinet's three data centres (approximate positions; editable in Contract & rates). */
+/** Multinet's three data centres, locations confirmed by the customer on 3 Nov 2026 (map positions approximate; editable in Contract & rates). */
 export const MULTINET_DATA_CENTRES: DataCentre[] = [
   { name: "Multinet Karachi (Korangi Industrial Area)", lat: 24.8335, lng: 67.1375 },
   { name: "Multinet Lahore (NTC Building, Race Course Road)", lat: 31.5525, lng: 74.3285 },
