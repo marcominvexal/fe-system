@@ -43,9 +43,16 @@ export function readEngineer(body: string): { name: string; quoted: boolean } | 
   return old.length ? { name: old[0], quoted: true } : null;
 }
 
-/** The one job an email's subject refers to; null if it names none or more than one. */
-export function jobForSubject(tasks: Task[], subject: string): Task | null {
-  const wos = [...new Set([...subject.matchAll(/\b(\d{8}(?:-\d+)?)\b/g)].map((m) => m[1]))];
+/** What the sender wrote themselves, without the quoted thread below it. */
+export function freshText(body: string): string {
+  const text = body.replace(/\r\n?/g, "\n");
+  const cut = text.search(QUOTED);
+  return cut >= 0 ? text.slice(0, cut) : text;
+}
+
+/** The one job a piece of text (usually a subject) refers to; null if it names none or more than one. */
+export function jobForSubject(tasks: Task[], text: string): Task | null {
+  const wos = [...new Set([...text.matchAll(/\b(\d{8}(?:-\d+)?)\b/g)].map((m) => m[1]))];
   const found = new Set<Task>();
   for (const wo of wos) {
     const i = findJobIndex(tasks, wo);

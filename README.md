@@ -16,8 +16,8 @@ Invoiced by **Exponentia Global**. Made by **Invexal**.
 | Cancelled | Cancelled | Never billed |
 | Other status (e.g. "Dispatch Rescheduled") | unchanged | Logged on the job's timeline |
 
-- Fixed-format Orange emails are trusted only from `MAIL_ALLOWED_SENDERS` (or forwarded with the original quoted). Anything else is read by Google Gemini; AI-read jobs are flagged for checking and AI never bills.
-- Every email is processed once (tracked by Message-ID). At most 30 emails per sync go to the AI; the rest wait for the next sync.
+- Fixed-format Orange emails are trusted only from `MAIL_ALLOWED_SENDERS` (or forwarded with the original quoted). A person's email about a known job is logged on it directly. Google Gemini reads only what is left: an email that matches no job, or one that may cancel a visit. AI-read jobs are flagged for checking and AI never bills.
+- Every email is processed once (tracked by Message-ID). At most 10 emails per sync go to the AI; the rest wait for the next sync.
 - Billed is not invoiced: a monthly invoice run (`INV-YYYYMM-NN`) picks up billed visits and creates engineer payouts (`PO-…`). Credit notes are `CN-…`.
 
 ## Billing: contract and cycles

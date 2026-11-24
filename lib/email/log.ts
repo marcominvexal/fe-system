@@ -83,7 +83,8 @@ export async function recordBatch(
         existing.reason = undefined;
         existing.taskId = "taskId" in outcome ? outcome.taskId : existing.taskId;
         existing.workOrder = "workOrder" in outcome ? outcome.workOrder : existing.workOrder;
-        if ("viaAi" in outcome && outcome.viaAi) { existing.kind = "update"; existing.viaAi = true; }
+        if ("kind" in outcome && outcome.kind === "update") existing.kind = "update";
+        if ("viaAi" in outcome && outcome.viaAi) existing.viaAi = true;
       } else if (existing.outcome === "ignored" && outcome.status === "ignored") {
         existing.reason = outcome.reason;
       }
@@ -100,7 +101,7 @@ export async function recordBatch(
       processedAt: now,
       lastSeenAt:  now,
       seenCount:   1,
-      kind:      "viaAi" in outcome && outcome.viaAi ? "update"
+      kind:      "kind" in outcome && outcome.kind === "update" ? "update"
                : c?.kind === "cleared" && !isClosureStatus(statusFromSubject(mail.subject) ?? "") ? "update"
                : c?.kind ?? null,
       viaAi:     "viaAi" in outcome && outcome.viaAi ? true : undefined,

@@ -25,7 +25,8 @@ const KIND: Record<string, { label: string; tone: Tone }> = {
   dispatch: { label: "Dispatch", tone: "info" },
   photo:    { label: "Photo", tone: "neutral" },
   cleared:  { label: "Cleared", tone: "ok" },
-  update:   { label: "AI read", tone: "brand" },
+  update:   { label: "Update", tone: "neutral" },
+  ai:       { label: "AI read", tone: "brand" },
 };
 
 const OUTCOME: Record<MailOutcome, { label: string; tone: Tone }> = {
@@ -84,7 +85,7 @@ export default function InboxPage() {
       render: (e) => (
         <div className="min-w-[200px] max-w-[420px]">
           <div className="flex items-center gap-2">
-            {e.kind ? <Badge tone={KIND[e.kind].tone} dot={false}>{KIND[e.kind].label}</Badge> : <Badge tone="muted" dot={false}>Other</Badge>}
+            {e.kind ? <Badge tone={KIND[e.viaAi ? "ai" : e.kind].tone} dot={false}>{KIND[e.viaAi ? "ai" : e.kind].label}</Badge> : <Badge tone="muted" dot={false}>Other</Badge>}
             <p className="truncate text-fg" title={e.subject}>{e.subject || "(no subject)"}</p>
           </div>
           <p className="mt-0.5 truncate text-2xs text-fg-subtle">

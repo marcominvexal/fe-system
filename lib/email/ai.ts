@@ -6,6 +6,7 @@
  */
 import type { IncomingEmail } from "./ingest";
 import { stripLinks } from "./parse";
+import { freshText } from "./engineer";
 
 export type AiKind = "dispatch" | "progress" | "cleared" | "cancelled" | "other";
 
@@ -74,7 +75,9 @@ export async function extractWithAi(mail: IncomingEmail): Promise<AiExtraction |
   const key = process.env.GEMINI_API_KEY;
   if (!key) return null;
   // Keep the newest message of a thread and drop links (portal tokens) before sending
-  const body = stripLinks(mail.text).replace(/\n{3,}/g, "\n\n").slice(0, 9000);
+  // A short forward ("please see below") only makes sense with the thread under it
+  const fresh = freshText(mail.text);
+  const body = stripLinks(fresh.trim().length > 120 ? fresh : mail.text).replace(/\n{3,}/g, "\n\n").slice(0, 4000);
   const input = `Subject: ${mail.subject}\nFrom: ${mail.from}\nDate: ${mail.date}\n\n${body}`;
 
   const res = await fetch(
@@ -84,7 +87,11 @@ export async function extractWithAi(mail: IncomingEmail): Promise<AiExtraction |
       headers: { "Content-Type": "application/json", "x-goog-api-key": key },
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: PROMPT + input }] }],
-        generationConfig: { temperature: 0, responseMimeType: "application/json", responseSchema: SCHEMA },
+        generationConfig: {
+          temperature: 0, responseMimeType: "application/json", responseSchema: SCHEMA, maxOutputTokens: 500,
+          // Simple extraction: skip the paid "thinking" step
+          ...(/2\.5-flash/.test(MODEL()) ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+        },
       }),
     },
   );

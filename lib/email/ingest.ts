@@ -129,12 +129,7 @@ export function ingestEmail(tasks: Task[], mail: IncomingEmail): { tasks: Task[]
   // details Orange's own notice often lacks; once the job has them, replies are
   // only logged, so an old copy never overwrites the job.
   if (!created && p.kind === "dispatch" && /^\s*(re|aw)\s*:/i.test(mail.subject) && (list[idx].openedAt || !p.openedAt)) {
-    const job = list[idx];
-    const said = replyLine(mail.text);
-    const reply: EmailEvent = { kind: "update", at: mail.date, subject: mail.subject, messageId: mail.messageId,
-      note: `Reply from ${addr(mail.from)}${said ? `: ${said}` : ""}` };
-    list[idx] = { ...job, emailLog: [...(job.emailLog ?? []), reply].sort((a, b) => a.at.localeCompare(b.at)) };
-    return { tasks: list, outcome: { status: "updated", taskId: job.id, workOrder: p.workOrder, kind: "update" } };
+    return logReply(list, list[idx], mail);
   }
   if (created) {
     list.push(blankTask(nextId(list), p, mail));
@@ -220,6 +215,18 @@ export function ingestEmail(tasks: Task[], mail: IncomingEmail): { tasks: Task[]
   return {
     tasks: list,
     outcome: { status: created ? "created" : "updated", taskId: t.id, workOrder: p.workOrder, kind: p.kind },
+  };
+}
+
+/** Log a person's email on the job it is about, without changing the job's status or details. */
+export function logReply(tasks: Task[], job: Task, mail: IncomingEmail): { tasks: Task[]; outcome: IngestOutcome } {
+  const said = replyLine(mail.text);
+  const event: EmailEvent = { kind: "update", at: mail.date, subject: mail.subject, messageId: mail.messageId,
+    note: `Reply from ${addr(mail.from)}${said ? `: ${said}` : ""}` };
+  const next = { ...job, emailLog: [...(job.emailLog ?? []), event].sort((a, b) => a.at.localeCompare(b.at)) };
+  return {
+    tasks: tasks.map((t) => (t === job ? next : t)),
+    outcome: { status: "updated", taskId: job.id, workOrder: job.workOrder ?? job.id, kind: "update" },
   };
 }
 
