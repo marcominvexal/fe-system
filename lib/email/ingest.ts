@@ -54,7 +54,7 @@ function nextId(tasks: Task[]): string {
   return `T-${String(Math.max(idFloor, ...nums, 0) + 1).padStart(3, "0")}`;
 }
 
-/** Field engineers are the partner's (ASP); Orange never names the person. */
+/** Placeholder until an email names the engineer (see engineer.ts). */
 const ASP_ENGINEER = { engineerId: "asp", engineerName: "ASP field engineer" };
 
 function blankTask(id: string, p: ParsedEmail, mail: IncomingEmail): Task {
@@ -269,7 +269,7 @@ export function ingestAi(tasks: Task[], mail: IncomingEmail, ai: AiExtraction): 
   t.siteId      = t.siteId ?? ai.siteId;
   t.scheduledAt = t.scheduledAt ?? ai.scheduledAt;
   const names = engineerNames(ai.engineers);
-  if (names && t.engineerNameSource !== "manual") {
+  if (names && !t.engineerNameSource) {
     t.engineerName = names;
     t.engineerNameSource = "email";
   }
