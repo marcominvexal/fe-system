@@ -25,7 +25,7 @@ export interface AiExtraction {
 }
 
 export const aiEnabled = () => !!process.env.GEMINI_API_KEY;
-const MODEL = () => process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const MODEL = () => process.env.GEMINI_MODEL || "gemini-3.5-flash-lite"; // reads these short emails without paid "thinking"
 
 /** Cheap filter so unrelated mail (sales, bills, newsletters) never reaches the API. */
 export function mightBeRelevant(mail: IncomingEmail): boolean {
@@ -88,8 +88,7 @@ export async function extractWithAi(mail: IncomingEmail): Promise<AiExtraction |
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: PROMPT + input }] }],
         generationConfig: {
-          temperature: 0, responseMimeType: "application/json", responseSchema: SCHEMA, maxOutputTokens: 500,
-          // Simple extraction: skip the paid "thinking" step
+          temperature: 0, responseMimeType: "application/json", responseSchema: SCHEMA, maxOutputTokens: 800,
           ...(/2\.5-flash/.test(MODEL()) ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
         },
       }),
