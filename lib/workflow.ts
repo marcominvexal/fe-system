@@ -119,7 +119,7 @@ export function timeline(t: Task, now = Date.now()): TimelineEvent[] {
       "Orange cleared the work order";
     const detail =
       e.kind === "photo"  ? e.note?.replace(/^Photo uploaded:\s*/, "") :
-      e.kind === "update" ? `Read by AI · ${e.subject}` :
+      e.kind === "update" ? /^(Reply from|Orange status)/.test(e.note ?? "") ? e.subject : `Read by AI · ${e.subject}` :
       e.subject;
     ev.push({ at: e.at, title, detail, kind: "email" });
   }

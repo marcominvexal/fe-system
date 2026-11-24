@@ -4,6 +4,7 @@
  * in replies and in notes Orange's portal sends out.
  */
 import type { Task } from "@/lib/store";
+import { findJobIndex } from "./workOrder";
 
 const LABEL = /\b(?:F\.?\s?E\.?|field\s+engineer|engineer)(?:'s)?\s+name\s*[:\-–]\s*/gi;
 // What can follow the name on the same line ("FE Name: Waqar Islam ETA: Tomorrow")
@@ -47,9 +48,8 @@ export function jobForSubject(tasks: Task[], subject: string): Task | null {
   const wos = [...new Set([...subject.matchAll(/\b(\d{8}(?:-\d+)?)\b/g)].map((m) => m[1]))];
   const found = new Set<Task>();
   for (const wo of wos) {
-    const exact = tasks.filter((t) => t.workOrder === wo);
-    const hits = exact.length ? exact : tasks.filter((t) => t.workOrder?.split("-")[0] === wo.split("-")[0]);
-    hits.forEach((t) => found.add(t));
+    const i = findJobIndex(tasks, wo);
+    if (i !== -1) found.add(tasks[i]);
   }
   return found.size === 1 ? [...found][0] : null;
 }

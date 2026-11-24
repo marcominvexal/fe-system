@@ -15,6 +15,7 @@ import { calcDuration } from "@/lib/store";
 import { isClosureStatus, parseEmail, type ParsedEmail } from "./parse";
 import { autoBillOnCleared, classifyDistance, classifyService, classifyVisit } from "./rules";
 import type { AiExtraction } from "./ai";
+import { findJobIndex, isAmbiguous } from "./workOrder";
 
 export type IngestKind = ParsedEmail["kind"] | "update";
 
@@ -103,10 +104,11 @@ export function isTrusted(mail: IncomingEmail): boolean {
   return quoted.some((a) => allowed.includes(a.replace(/^.*?([^\s<"]+@[^\s>"]+).*$/, "$1")));
 }
 
-/** Work orders match exactly, or on the base number ("18533289" ↔ "18533289-1"). */
-export function sameWorkOrder(a?: string, b?: string): boolean {
-  if (!a || !b) return false;
-  return a === b || a.split("-")[0] === b.split("-")[0];
+/** First line a person wrote in a reply, above their signature and the quoted thread. */
+function replyLine(text: string): string | undefined {
+  return text.split(/\r?\n/).map((l) => l.trim())
+    .find((l) => l && !/^(hi|hello|dear|good (morning|afternoon|evening)|team)\b.{0,25}$/i.test(l) && !/^(from|sent|to|cc|subject):/i.test(l))
+    ?.replace(/https?:\/\/\S+/g, "").slice(0, 160);
 }
 
 export function ingestEmail(tasks: Task[], mail: IncomingEmail): { tasks: Task[]; outcome: IngestOutcome } {
@@ -121,8 +123,19 @@ export function ingestEmail(tasks: Task[], mail: IncomingEmail): { tasks: Task[]
   if (seen) return { tasks, outcome: { status: "duplicate", taskId: seen.id, workOrder: p.workOrder } };
 
   const list = [...tasks];
-  let idx = list.findIndex((t) => sameWorkOrder(t.workOrder, p.workOrder));
+  let idx = findJobIndex(list, p.workOrder);
   const created = idx === -1;
+  // A person's reply carries a copy of the dispatch. It supplies the booking
+  // details Orange's own notice often lacks; once the job has them, replies are
+  // only logged, so an old copy never overwrites the job.
+  if (!created && p.kind === "dispatch" && /^\s*(re|aw)\s*:/i.test(mail.subject) && (list[idx].openedAt || !p.openedAt)) {
+    const job = list[idx];
+    const said = replyLine(mail.text);
+    const reply: EmailEvent = { kind: "update", at: mail.date, subject: mail.subject, messageId: mail.messageId,
+      note: `Reply from ${addr(mail.from)}${said ? `: ${said}` : ""}` };
+    list[idx] = { ...job, emailLog: [...(job.emailLog ?? []), reply].sort((a, b) => a.at.localeCompare(b.at)) };
+    return { tasks: list, outcome: { status: "updated", taskId: job.id, workOrder: p.workOrder, kind: "update" } };
+  }
   if (created) {
     list.push(blankTask(nextId(list), p, mail));
     idx = list.length - 1;
@@ -231,7 +244,11 @@ export function ingestAi(tasks: Task[], mail: IncomingEmail, ai: AiExtraction): 
   if (seen) return { tasks, outcome: { status: "duplicate", taskId: seen.id, workOrder: wo } };
 
   const list = [...tasks];
-  let idx = list.findIndex((t) => sameWorkOrder(t.workOrder, wo) || (!!ai.incident && t.workOrder === ai.incident));
+  if (isAmbiguous(list, wo)) {
+    return { tasks, outcome: { status: "ignored", reason: `AI: work order ${wo} has several visits and the email doesn't say which` } };
+  }
+  let idx = findJobIndex(list, wo);
+  if (idx === -1 && ai.incident) idx = list.findIndex((t) => t.workOrder === ai.incident);
   const created = idx === -1;
   if (created) {
     const svc = classifyService(undefined, ai.scheduledAt);
