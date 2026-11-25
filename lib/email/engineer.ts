@@ -32,14 +32,42 @@ function namesIn(text: string): string[] {
   return out;
 }
 
+// "Please find the FE details below:" / "Please see the Field Engineers details"
+const HEADING = /\b(?:F\.?\s?E\.?s?|field\s+engineers?|engineers?)(?:'s)?\s+details?\b/i;
+const ID_LINE = /^(?:CNIC|NIC|national\s+id|passport)\b/i;
+// Below this the details are someone else's: the site contact, or a signature
+const OTHER_PERSON = /\b(?:LCON|POC|local\s+contact|site\s+contact)\b|^(?:warm |best |kind )?regards\b|^thanks\b/i;
+
+/** Engineers listed under a details heading: "Name: Gulraiz Khan", or a (numbered) name with its ID on the next line. */
+function listedNames(text: string): string[] {
+  const lines = text.split("\n").map((l) => l.replace(/[*_]+/g, " ").trim()).filter(Boolean);
+  const start = lines.findIndex((l) => HEADING.test(l));
+  if (start === -1) return [];
+  const out: string[] = [];
+  for (let i = start + 1; i < Math.min(lines.length, start + 30); i++) {
+    const labelled = /^(?:\d+\s*[.)]\s*)?name\s*[:\-–]\s*(.+)$/i.exec(lines[i]);
+    const raw = labelled?.[1] ?? (ID_LINE.test(lines[i + 1] ?? "") ? lines[i].replace(/^\d+\s*[.)]\s*/, "") : null);
+    const name = raw && cleanName(raw);
+    if (name) { if (!out.some((n) => n.toLowerCase() === name.toLowerCase())) out.push(name); }
+    else if (OTHER_PERSON.test(lines[i])) break;
+  }
+  return out;
+}
+
+/** Labelled names ("FE Name: …") win; otherwise names listed under a details heading. */
+function engineersIn(text: string): string[] {
+  const labelled = namesIn(text);
+  return labelled.length ? labelled : listedNames(text);
+}
+
 /** Engineers named in an email, and whether they are in the new message or only in the quoted thread. */
 export function readEngineer(body: string): { name: string; quoted: boolean } | null {
   const text = body.replace(/\r\n?/g, "\n").replace(/ /g, " ");
   const cut = text.search(QUOTED);
-  const fresh = namesIn(cut >= 0 ? text.slice(0, cut) : text);
+  const fresh = engineersIn(cut >= 0 ? text.slice(0, cut) : text);
   if (fresh.length) return { name: fresh.join(", "), quoted: false };
   // In the thread below, the topmost mention is the most recent
-  const old = cut >= 0 ? namesIn(text.slice(cut)) : [];
+  const old = cut >= 0 ? engineersIn(text.slice(cut)) : [];
   return old.length ? { name: old[0], quoted: true } : null;
 }
 

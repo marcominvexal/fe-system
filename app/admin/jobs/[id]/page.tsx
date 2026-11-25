@@ -66,7 +66,7 @@ function EngineerPanel({ task, onSaved }: { task: Task; onSaved: () => void }) {
               ? <p className="text-[18px] font-bold text-fg">{name}</p>
               : <p className="text-[15px] font-bold text-warn-fg">Name not received yet</p>}
             <p className="mt-0.5 text-xs text-fg-subtle">
-              {task.engineerNameSource === "manual" ? "Entered by hand" : name ? "Read from Orange's emails" : "Orange's emails haven't named the engineer. Add it so it shows on reports and invoices."}
+              {task.engineerNameSource === "manual" ? "Entered by hand" : name ? "Read from the emails" : "No email in the shared inbox names the engineer yet. Add it so it shows on reports and invoices."}
               {task.asp ? ` · Partner ${task.asp.replace(/^ASP_[A-Z]{2}\s*/, "")}` : ""}
             </p>
           </div>
